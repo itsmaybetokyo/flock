@@ -723,6 +723,17 @@ export const OrchestratorMcpScheduleTaskInput = Schema.Struct({
         "Runs share one thread but each starts a fresh session. Unbound: the first run makes the thread.",
     }),
   ),
+  autoSettle: Schema.optional(
+    Schema.Boolean.annotate({
+      description: "Default false. True: settle the run's thread when the run completes.",
+    }),
+  ),
+  baseRef: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "New-thread runs only: branch each run's worktree starts from, fetched from origin. Default: the repo's default branch.",
+    }),
+  ),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
 export type OrchestratorMcpScheduleTaskInput = typeof OrchestratorMcpScheduleTaskInput.Type;
@@ -748,6 +759,8 @@ export const OrchestratorMcpScheduledTask = Schema.Struct({
   schedule: ScheduledTaskSchedule,
   nextRunAt: Schema.NullOr(IsoDateTime),
   lastRunStatus: ScheduledTaskRunStatus,
+  autoSettle: Schema.Boolean,
+  baseRef: Schema.optional(Schema.String),
   webhookUrl: Schema.optional(Schema.String).annotate({
     description:
       "Webhook bearer URL, returned only on task creation to callers allowed to run it. Lists and updates omit it; the user can copy it from Settings. Creation may omit it without T3 Connect remote access or run permission.",
@@ -789,6 +802,8 @@ export const OrchestratorMcpUpdateScheduledTaskInput = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean),
   bindToCurrentThread: Schema.optional(Schema.Boolean),
   freshSession: Schema.optional(Schema.Boolean),
+  autoSettle: Schema.optional(Schema.Boolean),
+  baseRef: Schema.optional(TrimmedNonEmptyString),
 });
 export type OrchestratorMcpUpdateScheduledTaskInput =
   typeof OrchestratorMcpUpdateScheduledTaskInput.Type;
