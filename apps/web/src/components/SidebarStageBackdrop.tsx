@@ -19,7 +19,7 @@ export function resolveSidebarStageBackdropVariant(
   if (mode === "dev-artwork") return "dev";
   if (mode !== "artwork") return null;
   const normalized = stageLabel.trim().toLowerCase();
-  if (normalized === "nightly") return "nightly";
+  // Fork: every Flock build is a nightly, so nightly is not marked.
   if (normalized === "dev") return "dev";
   return null;
 }
@@ -30,8 +30,6 @@ export function resolveEnvironmentIdentificationPillLabel(
   const normalized = stageLabel.trim().toLowerCase();
   // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "dev") return "Dev";
-  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
-  if (normalized === "nightly") return "Nightly";
   return null;
 }
 
