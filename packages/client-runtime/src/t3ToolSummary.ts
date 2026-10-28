@@ -579,6 +579,23 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "memory": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Used memory {count} time} other {Used memory {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to use memory {count} time} other {Tried to use memory {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "attachment-prepare": {
       const count = countEntities(entityIds("attachmentId"));
       label = done
