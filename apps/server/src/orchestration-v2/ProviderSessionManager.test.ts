@@ -815,6 +815,7 @@ function runBrowserAccessScenario(input: {
   readonly deviceOverride?: boolean;
   readonly enableAgentDeviceAccess?: boolean;
   readonly enableDeviceSupport?: boolean;
+  readonly memoryEnabled?: boolean;
   readonly createThread?: boolean;
   readonly projectExists?: boolean;
   readonly delegatedBy?: ThreadId;
@@ -875,6 +876,7 @@ function runBrowserAccessScenario(input: {
             ...(input.enableDeviceSupport === undefined
               ? {}
               : { enableDeviceSupport: input.enableDeviceSupport }),
+            ...(input.memoryEnabled === undefined ? {} : { memoryEnabled: input.memoryEnabled }),
             projectSettingsOverrides: {
               [projectId]: {
                 enableAgentBrowserAccess: input.projectOverride,
@@ -5655,6 +5657,22 @@ it.effect(
         );
       }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("ProviderSessionManagerV2 gives a thread memory only while the setting is on", () =>
+  Effect.gen(function* () {
+    const on = yield* runBrowserAccessScenario({
+      enableAgentBrowserAccess: true,
+      projectOverride: true,
+      memoryEnabled: true,
+    });
+    const off = yield* runBrowserAccessScenario({
+      enableAgentBrowserAccess: true,
+      projectOverride: true,
+    });
+    assert.isTrue(on?.capabilities?.has("memory"));
+    assert.isFalse(off?.capabilities?.has("memory"));
+  }),
 );
 
 it.effect(
