@@ -135,6 +135,7 @@ const prepareBearerRoute = Effect.fn("clientRuntime.connection.onboarding.prepar
     readonly httpBaseUrl: string;
     readonly wsBaseUrl: string;
     readonly expectedEnvironmentId: EnvironmentId | undefined;
+    readonly admission?: "tailnet-trust";
   }) {
     const descriptor = input.descriptor;
     if (
@@ -156,6 +157,7 @@ const prepareBearerRoute = Effect.fn("clientRuntime.connection.onboarding.prepar
         label: descriptor.label,
         httpBaseUrl: input.httpBaseUrl,
         wsBaseUrl: input.wsBaseUrl,
+        ...(input.admission === undefined ? {} : { admission: input.admission }),
       }),
     };
     // The registry checks again under its lease; this early check keeps a refused code unspent.
@@ -205,9 +207,9 @@ const T3_DEFAULT_PORT = 3773;
 const TAILNET_PROBE_TIMEOUT_MS = 4_000;
 
 /**
- * Where a typed machine name, MagicDNS name, or tailnet IP may answer, most likely first.
- * `tailscale serve` publishes `*.ts.net` over HTTPS; a bare name or IP is usually T3 Code
- * itself on its default port.
+ * Where a typed machine name, MagicDNS name, or tailnet IP may answer, most likely first. The
+ * direct address comes first because only it carries tailnet trust; `tailscale serve`'s HTTPS
+ * name is tried after, for a server that only listens there.
  */
 export function tailnetCandidateBaseUrls(address: string): ReadonlyArray<string> {
   const trimmed = address.trim().replace(/\/+$/, "");
@@ -228,9 +230,7 @@ export function tailnetCandidateBaseUrls(address: string): ReadonlyArray<string>
   if (port !== undefined) {
     return [tailscaleName && port === "443" ? `https://${host}/` : `http://${host}:${port}/`];
   }
-  const https = `https://${host}/`;
-  const direct = `http://${host}:${T3_DEFAULT_PORT}/`;
-  return tailscaleName ? [https, direct] : [direct, https];
+  return [`http://${host}:${T3_DEFAULT_PORT}/`, `https://${host}/`];
 }
 
 const probeTailnetAddress = Effect.fn("clientRuntime.connection.onboarding.probeTailnetAddress")(
@@ -296,6 +296,7 @@ export const prepareTailnetRegistration = Effect.fn(
     httpBaseUrl,
     wsBaseUrl: deriveWsBaseUrl(httpBaseUrl),
     expectedEnvironmentId: input.expectedEnvironmentId,
+    admission: "tailnet-trust",
   });
   const access = yield* requestRemoteTailnetSession({
     httpBaseUrl,
