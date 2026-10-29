@@ -275,6 +275,13 @@ export const layerHttpCompression = HttpRouter.middleware(HttpMiddleware.compres
   global: true,
 });
 
+/** These admit a caller by its tailnet identity, which a web page on that device must not borrow. */
+const CORS_EXCLUDED_PATHS: ReadonlySet<string> = new Set([
+  MCP_HTTP_PATH,
+  "/api/auth/tailnet-session",
+  "/api/tailnet/peers",
+]);
+
 export const layerBrowserApiCors = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
@@ -295,7 +302,7 @@ export const layerBrowserApiCors = Layer.unwrap(
       (httpEffect) => {
         const withCors = cors(httpEffect);
         return Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
-          request.url.split("?", 1)[0] === MCP_HTTP_PATH ? httpEffect : withCors,
+          CORS_EXCLUDED_PATHS.has(request.url.split("?", 1)[0] ?? "") ? httpEffect : withCors,
         );
       },
       { global: true },
