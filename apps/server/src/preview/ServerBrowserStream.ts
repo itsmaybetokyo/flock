@@ -20,7 +20,11 @@ import {
 } from "effect/http";
 import * as Socket from "effect/socket/Socket";
 
-import { authenticateMediaRequest, failEnvironmentInternal } from "../auth/http.ts";
+import {
+  authenticateMediaRequest,
+  failEnvironmentInternal,
+  untilSessionEnds,
+} from "../auth/http.ts";
 import * as SessionStore from "../auth/SessionStore.ts";
 import { assetResponseHeaders } from "../http.ts";
 import * as PreviewBrowserHost from "./PreviewBrowserHost.ts";
@@ -205,6 +209,7 @@ const makeHandler = Effect.fnUntraced(function* (browser: ServerBrowser.ServerBr
       );
     }),
   ).pipe(
+    untilSessionEnds(session),
     Effect.catchTags({
       ServerBrowserLaunchError: (error) =>
         Effect.logWarning("server preview browser failed to start", { cause: error.cause }).pipe(

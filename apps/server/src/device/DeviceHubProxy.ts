@@ -18,7 +18,11 @@ import * as Socket from "effect/socket/Socket";
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 
-import { authenticateMediaRequest, failEnvironmentInternal } from "../auth/http.ts";
+import {
+  authenticateMediaRequest,
+  failEnvironmentInternal,
+  untilSessionEnds,
+} from "../auth/http.ts";
 import * as SessionStore from "../auth/SessionStore.ts";
 import * as DeviceService from "./DeviceService.ts";
 import { repeatStillFrame } from "./mjpegStillFrame.ts";
@@ -252,7 +256,7 @@ const handler = Effect.gen(function* () {
         upstreamUrl.replace(/^http/, "ws"),
         routed?.protocols,
         routed?.headers,
-      ),
+      ).pipe(untilSessionEnds(session)),
       invalidated.pipe(Effect.as(HttpServerResponse.empty())),
     );
   }

@@ -32,10 +32,17 @@ const platformLayer = NodeHttpPlatform.layer.pipe(Layer.provideMerge(NodeService
 const makeAuth = (
   scopes: ReadonlyArray<AuthEnvironmentScope>,
   error?: EnvironmentAuth.ServerAuthCredentialError,
-  awaitInvalidation: SessionStore.SessionStore["Service"]["awaitInvalidation"] = () => Effect.never,
+  {
+    awaitInvalidation = () => Effect.never,
+    sessionEnd = Effect.never,
+  }: {
+    readonly awaitInvalidation?: SessionStore.SessionStore["Service"]["awaitInvalidation"];
+    readonly sessionEnd?: Effect.Effect<void>;
+  } = {},
 ) => {
   const requests: string[] = [];
   const layer = Layer.mock(EnvironmentAuth.EnvironmentAuth, {
+    awaitSessionEnd: () => sessionEnd,
     authenticateWebSocketUpgrade: (request) => {
       requests.push(request.url);
       return error
@@ -166,6 +173,52 @@ it.effect.each([
   }),
 );
 
+it.effect("closes an open preview stream when its session ends", () =>
+  Effect.gen(function* () {
+    const ended = yield* Deferred.make<void>();
+    const auth = makeAuth([AuthOrchestrationReadScope], undefined, {
+      sessionEnd: Deferred.await(ended),
+    });
+    const output = yield* Queue.make<ServerBrowser.ServerBrowserViewerOutput>();
+    yield* Queue.offer(output, { _tag: "viewport", width: 1280, height: 800 });
+    const browser = ServerBrowser.ServerBrowser.of({
+      clearProfile: () => Effect.void,
+      profileReporter: Effect.succeed(() => Effect.void),
+      openDownload: () => Effect.succeedNone,
+      answerFileChooser: () => Effect.succeed(false),
+      attachViewer: () => Effect.succeed({ output, input: () => Effect.void }),
+    });
+    const services = yield* Layer.build(
+      HttpRouter.serve(
+        routeLayer.pipe(
+          Layer.provide(Layer.succeed(ServerBrowser.ServerBrowser, browser)),
+          Layer.provide(platformLayer),
+        ),
+        { disableListenLog: true },
+      ).pipe(Layer.provideMerge(NodeHttpServer.layerTest), Layer.provide(auth.layer)),
+    );
+    const server = Context.get(services, HttpServer.HttpServer);
+    const origin = HttpServer.formatAddress(server.address).replace(/^http/, "ws");
+    const opened = Promise.withResolvers<void>();
+    const closed = Promise.withResolvers<void>();
+    const socket = yield* Effect.acquireRelease(
+      Effect.sync(
+        () =>
+          new WebSocket(
+            `${origin}/api/preview-stream/ws?threadId=thread&tabId=tab&wsTicket=one-use-ticket`,
+          ),
+      ),
+      (socket) => Effect.sync(() => socket.close()),
+    );
+    socket.addEventListener("message", () => opened.resolve());
+    socket.addEventListener("close", () => closed.resolve());
+    yield* Effect.promise(() => opened.promise);
+    // Revoked, or tailnet trust turned off: the stream must not outlive the session.
+    yield* Deferred.succeed(ended, undefined);
+    yield* Effect.promise(() => closed.promise);
+  }).pipe(Effect.scoped),
+);
+
 it.effect("sends replies ahead of stale frames and only the newest frame after an ack", () =>
   Effect.gen(function* () {
     const output = yield* Queue.make<ServerBrowser.ServerBrowserViewerOutput>();
@@ -193,8 +246,9 @@ it.effect("sends replies ahead of stale frames and only the newest frame after a
       ).pipe(
         Layer.provideMerge(NodeHttpServer.layerTest),
         Layer.provide(
-          makeAuth([AuthOrchestrationReadScope], undefined, () => Deferred.await(invalidated))
-            .layer,
+          makeAuth([AuthOrchestrationReadScope], undefined, {
+            awaitInvalidation: () => Deferred.await(invalidated),
+          }).layer,
         ),
       ),
     );
