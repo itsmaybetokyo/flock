@@ -241,7 +241,7 @@ export function formatHourShort(
   return formatHour(zonedHourFormat, instant, hour12);
 }
 
-export function formatDateTimeShort(
+function formatDateTimeShort(
   instant: string,
   timeZone?: string,
   hour12 = true,

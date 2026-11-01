@@ -10,8 +10,10 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
+import { limitSeverity } from "@t3tools/client-runtime/usage-ledger";
 import {
   type LimitPace,
+  type LimitPresentations,
   paceOf,
   paceRemainingPercent,
   remainingPercent,
@@ -23,6 +25,7 @@ import { Fragment, useLayoutEffect, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { observeResize } from "../../lib/observeResize";
+import { cn } from "../../lib/utils";
 import { environmentPresentations } from "../../state/presentation";
 import { useEnvironmentScope, readEnvironmentScope } from "../../state/session";
 import { serverEnvironment } from "../../state/server";
@@ -54,13 +57,6 @@ const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof Ga
     icon: TrendingDownIcon,
   },
 };
-
-export function barColor(driver: ServerProvider["driver"]): string {
-  const presentation = Object.values(PROVIDER_PRESENTATION).find(
-    (entry) => entry.driverKind === driver,
-  );
-  return presentation?.color ?? "var(--foreground)";
-}
 
 export function PaceIcon({ pace }: { readonly pace: LimitPace }) {
   const Icon = PACE[pace].icon;
@@ -126,7 +122,8 @@ function WindowBar({
   window,
   now,
 }: {
-  readonly color: string;
+  /** An account's chosen accent; otherwise the bar stays neutral. */
+  readonly color: string | null;
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
 }) {
@@ -134,6 +131,7 @@ function WindowBar({
   const gt = useGT();
   const m = useMessages();
   const remaining = remainingPercent(window);
+  const severity = limitSeverity(remaining);
   const timeLeft = paceRemainingPercent(window, now);
   const [barRef, paceMark] = usePaceMark(timeLeft);
   const resetsIn = formatResetsIn(window, now, m);
@@ -174,11 +172,23 @@ function WindowBar({
       >
         {/* Clip both layers so the gap exposes even a translucent composer surface. */}
         <div className="absolute inset-0" style={paceMark?.gap}>
-          <div className="absolute inset-x-0 inset-y-1.5 rounded-full bg-muted" />
+          {/* Bars stay neutral; amber and red are reserved for a low or spent window. */}
+          <div
+            className={cn(
+              "absolute inset-x-0 inset-y-1.5 rounded-full",
+              severity === "out" ? "bg-error/12 ring-1 ring-error/35 ring-inset" : "bg-muted",
+            )}
+          />
           {remaining > 0 ? (
             <div
-              className="absolute inset-y-1.5 left-0 rounded-full"
-              style={{ width: `${remaining}%`, backgroundColor: color }}
+              className={cn(
+                "absolute inset-y-1.5 left-0 rounded-full",
+                severity === "low" ? "bg-warning" : color === null && "bg-foreground/85",
+              )}
+              style={{
+                width: `${remaining}%`,
+                ...(severity === "low" || color === null ? {} : { backgroundColor: color }),
+              }}
             />
           ) : null}
         </div>
@@ -216,19 +226,17 @@ function WindowBar({
 }
 
 export function LimitWindows({
-  driver,
   accentColor,
   windows,
   now,
   compact = false,
 }: {
-  readonly driver: ServerProvider["driver"];
   readonly accentColor?: string | undefined;
   readonly windows: ReadonlyArray<ServerProviderUsageWindow>;
   readonly now: number;
   readonly compact?: boolean;
 }) {
-  const color = normalizeProviderAccentColor(accentColor) ?? barColor(driver);
+  const color = normalizeProviderAccentColor(accentColor) ?? null;
   const gt = useGT();
   const m = useMessages();
   return (
@@ -279,12 +287,12 @@ export function useResetCredit(environmentId: EnvironmentId) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const redeem = async () => {
+  const redeem = async (next: ResetCreditChoice | null = choice) => {
     setConfirming(false);
-    if (!choice || !readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
+    if (!next || !readEnvironmentScope(environmentId, AuthProvidersManageScope)) return;
     setBusy(true);
     setStatus(null);
-    const result = await consume({ environmentId, input: choice.input });
+    const result = await consume({ environmentId, input: next.input });
     setBusy(false);
     if (result._tag === "Success") {
       setStatus(result.value.warning ?? m(OUTCOME_TEXT[result.value.outcome]));
@@ -388,22 +396,17 @@ export function ResetCredits({
   );
 }
 
-/** Advance now only on explicit refresh to avoid page repaints from ticking. */
-export function UsageLimitsSection({
-  selectedEnvironmentIds,
-  hiddenProviders,
-  now,
-}: {
-  readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
-  readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
-  readonly now: number;
-}) {
-  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
+/** The selected environments' limit reports, without hidden providers' accounts. */
+export function selectLimitPresentations(
+  presentations: LimitPresentations,
+  selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null,
+  hiddenProviders: ReadonlySet<UsageProviderKind>,
+): LimitPresentations {
   const hiddenDrivers = new Set<ServerProvider["driver"]>(
     [...hiddenProviders].map((provider) => PROVIDER_PRESENTATION[provider].driverKind),
   );
   const isVisible = (driver: ServerProvider["driver"]) => !hiddenDrivers.has(driver);
-  const selected = new Map(
+  return new Map(
     [...presentations].flatMap(([id, presentation]) => {
       if (selectedEnvironmentIds !== null && !selectedEnvironmentIds.has(id)) return [];
       const config = presentation.serverConfig;
@@ -428,5 +431,27 @@ export function UsageLimitsSection({
       ];
     }),
   );
-  return <UsageLimitsPooled presentations={selected} now={now} />;
+}
+
+/** Advance now only on explicit refresh to avoid page repaints from ticking. */
+export function UsageLimitsSection({
+  selectedEnvironmentIds,
+  hiddenProviders,
+  now,
+}: {
+  readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
+  readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
+  readonly now: number;
+}) {
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
+  return (
+    <UsageLimitsPooled
+      presentations={selectLimitPresentations(
+        presentations,
+        selectedEnvironmentIds,
+        hiddenProviders,
+      )}
+      now={now}
+    />
+  );
 }

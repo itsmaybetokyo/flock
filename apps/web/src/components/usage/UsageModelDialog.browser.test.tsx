@@ -1,3 +1,4 @@
+import type { UsageDay } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
@@ -25,17 +26,17 @@ describe("UsageModelDialog", () => {
           unpricedTokens: 0,
           costShare: 1,
           tokenShare: 1,
+          byPeriod: new Map(),
         }}
         environments={[]}
         metric="cost"
-        chartWindow={{
-          days: [],
-          hours: [],
-          resolution: "day",
+        window={{
+          sinceDay: "2026-01-01" as UsageDay,
+          untilDay: "2026-01-01" as UsageDay,
           timeZone: "UTC",
-          referenceTime: undefined,
-          hour12: false,
+          resolution: "day",
         }}
+        hour12={false}
         onSetPrice={() => {}}
         onClose={() => {}}
       />,

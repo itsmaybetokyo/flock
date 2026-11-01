@@ -17,7 +17,7 @@ import { msg } from "gt-react";
 import { m, type MessageResolver } from "../../i18n/messages";
 import { shortcutConflictKey, shortcutKeyFromEvent } from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
-import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
+import { ALL_LIMITS_COMMAND, METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 
 // Rank every usage command; mixing rank and alphabetical comparisons makes order input-dependent.
 const usageCommandOrder = new Map<KeybindingCommand, number>(
@@ -470,7 +470,9 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
 
 // Whole labels: search titles keep the encoded message, which cannot nest another one.
 const USAGE_COMMAND_LABELS: Record<
-  (typeof METRIC_OPTIONS)[number]["command"] | (typeof WINDOW_OPTIONS)[number]["command"],
+  | (typeof METRIC_OPTIONS)[number]["command"]
+  | (typeof WINDOW_OPTIONS)[number]["command"]
+  | typeof ALL_LIMITS_COMMAND,
   string
 > = {
   "usage.cost": msg("Usage: Cost"),
