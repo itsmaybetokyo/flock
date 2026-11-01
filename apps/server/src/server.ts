@@ -43,6 +43,8 @@ import { resolveLauncherPath } from "./cloud/pinnedRuntime.ts";
 import { fixPath } from "./os-jank.ts";
 import * as Ws from "./ws.ts";
 import * as Memory from "./memory/Memory.ts";
+import * as PushDevices from "./push/PushDevices.ts";
+import * as PushNotifier from "./push/PushNotifier.ts";
 import * as AgentScopeLive from "./process/agentScope.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as SpawnWorker from "./process/SpawnWorker.ts";
@@ -694,6 +696,7 @@ const layerServerRestart = Layer.effect(
 
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   AgentAwarenessRelay.layer,
+  PushNotifier.layer.pipe(Layer.provide(PushDevices.layer)),
   HeldHooksWaker.layer,
   layerThreadSettlementWorker,
   layerScheduledRunSettlementWorker,
@@ -869,7 +872,7 @@ const layerMakeRoutes = Layer.mergeAll(
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
     ServerHttp.layerStaticAndDevRoute,
-    Ws.layer.pipe(Layer.provide(Memory.layer)),
+    Ws.layer.pipe(Layer.provide(Memory.layer), Layer.provide(PushDevices.layer)),
     speechStreamRouteLayer,
   ),
   McpHttpServer.layer.pipe(
