@@ -73,6 +73,7 @@ export class RemoteEnvironmentAuthorization extends Context.Service<
       readonly wsBaseUrl: string;
       readonly bearerToken: string;
       readonly connectionMethod: ClientConnectionMethod;
+      readonly checkedDescriptor?: ExecutionEnvironmentDescriptor;
     }) => Effect.Effect<AuthorizedRemoteEnvironment, ConnectionAttemptError>;
     readonly authorizeDpop: (input: {
       readonly expectedEnvironmentId: EnvironmentId;
@@ -82,6 +83,7 @@ export class RemoteEnvironmentAuthorization extends Context.Service<
        * environment's LAN or tailnet address.
        */
       readonly directEndpoint?: { readonly httpBaseUrl: string; readonly wsBaseUrl: string };
+      readonly checkedDescriptor?: ExecutionEnvironmentDescriptor;
     }) => Effect.Effect<AuthorizedRemoteEnvironment, ConnectionAttemptError>;
     readonly authorizeDpopHttp: (input: {
       readonly expectedEnvironmentId: EnvironmentId;
@@ -188,19 +190,22 @@ export const make = Effect.gen(function* () {
 
   /**
    * A saved LAN address can belong to another machine on a different network.
+   * `checkedDescriptor` is one this connect already fetched from the same address.
    */
   const verifyDirectEndpoint = Effect.fn("clientRuntime.connection.remote.verifyDirectEndpoint")(
     function* (input: {
       readonly expectedEnvironmentId: EnvironmentId;
       readonly httpBaseUrl: string;
       readonly connectionMethod: ClientConnectionMethod;
+      readonly checkedDescriptor?: ExecutionEnvironmentDescriptor;
     }) {
       const checked = checkedDescriptors.get(input.httpBaseUrl);
       checkedDescriptors.delete(input.httpBaseUrl);
       // A remembered mismatch still reads again, so a host that answers for the
       // right environment a moment later is not blocked.
       const descriptor =
-        checked !== undefined &&
+        input.checkedDescriptor ??
+        (checked !== undefined &&
         checked.descriptor.environmentId === input.expectedEnvironmentId &&
         (yield* Clock.monotonicTimeNanos) - checked.at <= CHECKED_DESCRIPTOR_TTL_NANOS
           ? checked.descriptor
@@ -211,7 +216,7 @@ export const make = Effect.gen(function* () {
               input.connectionMethod === "direct" && isNearbyAddress(input.httpBaseUrl)
                 ? NEARBY_DESCRIPTOR_TIMEOUT_MS
                 : undefined,
-            ).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
+            ).pipe(Effect.provideService(HttpClient.HttpClient, httpClient)));
       if (descriptor.environmentId !== input.expectedEnvironmentId) {
         return yield* environmentMismatchError({
           expected: input.expectedEnvironmentId,
@@ -232,6 +237,7 @@ export const make = Effect.gen(function* () {
       readonly wsBaseUrl: string;
       readonly bearerToken: string;
       readonly connectionMethod: ClientConnectionMethod;
+      readonly checkedDescriptor?: ExecutionEnvironmentDescriptor;
     }) {
       const descriptor = yield* verifyDirectEndpoint(input);
       const socketUrl = yield* resolveRemoteWebSocketConnectionUrl({
@@ -558,6 +564,9 @@ export const make = Effect.gen(function* () {
             expectedEnvironmentId: input.expectedEnvironmentId,
             httpBaseUrl: endpoint.httpBaseUrl,
             connectionMethod: "direct",
+            ...(input.checkedDescriptor === undefined
+              ? {}
+              : { checkedDescriptor: input.checkedDescriptor }),
           });
     const authorized = (
       token: TokenStore.RemoteDpopAccessToken,

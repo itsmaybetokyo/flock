@@ -56,8 +56,10 @@ import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 export class ConnectionResolver extends Context.Service<
   ConnectionResolver,
   {
+    /** `checkedDescriptor` is one this connect already fetched from the entry's address and matched. */
     readonly prepare: (
       entry: ConnectionCatalogEntry,
+      checkedDescriptor?: ExecutionEnvironmentDescriptor,
     ) => Effect.Effect<PreparedConnection, ConnectionAttemptError>;
     /**
      * Authorizes a socket without the orchestration protocol gate, for hosts
@@ -97,6 +99,7 @@ const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary
 
   return Effect.fn("clientRuntime.connection.broker.primary")(function* (
     target: PrimaryConnectionTarget,
+    checkedDescriptor: ExecutionEnvironmentDescriptor | undefined,
   ) {
     const bearerToken = yield* auth.bearerToken;
     if (Option.isNone(bearerToken)) {
@@ -107,7 +110,8 @@ const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary
         socketUrl: primarySocketUrl(target, presentation.metadata, yield* readClientOwnerParams),
         httpAuthorization: null,
         target,
-      } satisfies PreparedConnection;
+        ...(checkedDescriptor === undefined ? {} : { descriptor: checkedDescriptor }),
+      };
     }
 
     const authorized = yield* remote.authorizeBearer({
@@ -116,6 +120,7 @@ const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary
       wsBaseUrl: target.wsBaseUrl,
       bearerToken: bearerToken.value,
       connectionMethod: "direct",
+      ...(checkedDescriptor === undefined ? {} : { checkedDescriptor }),
     });
     return {
       ...authorized,
@@ -130,6 +135,7 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
 
   return Effect.fn("clientRuntime.connection.broker.bearer")(function* (
     entry: ConnectionCatalogEntry & { readonly target: BearerConnectionTarget },
+    checkedDescriptor: ExecutionEnvironmentDescriptor | undefined,
   ) {
     const target = entry.target;
     const profile = yield* Effect.fromOption(entry.profile, () =>
@@ -155,6 +161,7 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
       const authorized = yield* remote.authorizeDpop({
         expectedEnvironmentId: target.environmentId,
         directEndpoint: { httpBaseUrl: profile.httpBaseUrl, wsBaseUrl: profile.wsBaseUrl },
+        ...(checkedDescriptor === undefined ? {} : { checkedDescriptor }),
       });
       return { ...authorized, target } satisfies PreparedConnection;
     }
@@ -175,6 +182,7 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
       wsBaseUrl: profile.wsBaseUrl,
       bearerToken: credential.token,
       connectionMethod: "direct",
+      ...(checkedDescriptor === undefined ? {} : { checkedDescriptor }),
     });
     return {
       ...authorized,
@@ -265,6 +273,7 @@ const makeSshBroker = Effect.fn("clientRuntime.connection.broker.makeSsh")(funct
       wsBaseUrl: prepared.bootstrap.wsBaseUrl,
       bearerToken: prepared.bearerToken,
       connectionMethod: "ssh",
+      ...(prepared.descriptor === undefined ? {} : { checkedDescriptor: prepared.descriptor }),
     });
     return {
       ...authorized,
@@ -283,6 +292,7 @@ export const make = Effect.gen(function* () {
 
   const authorize = Effect.fn("clientRuntime.connection.broker.authorize")(function* (
     entry: ConnectionCatalogEntry,
+    checkedDescriptor?: ExecutionEnvironmentDescriptor,
   ) {
     const target: ConnectionTarget = entry.target;
     yield* Effect.annotateCurrentSpan({
@@ -294,9 +304,9 @@ export const make = Effect.gen(function* () {
     } = yield* (() => {
       switch (target._tag) {
         case "PrimaryConnectionTarget":
-          return primary(target);
+          return primary(target, checkedDescriptor);
         case "BearerConnectionTarget":
-          return bearer({ ...entry, target });
+          return bearer({ ...entry, target }, checkedDescriptor);
         case "RelayConnectionTarget":
           return relay(target);
         case "SshConnectionTarget":
@@ -323,8 +333,9 @@ export const make = Effect.gen(function* () {
 
   const prepare = Effect.fn("clientRuntime.connection.broker.prepare")(function* (
     entry: ConnectionCatalogEntry,
+    checkedDescriptor?: ExecutionEnvironmentDescriptor,
   ) {
-    const { prepared, descriptor } = yield* authorize(entry);
+    const { prepared, descriptor } = yield* authorize(entry, checkedDescriptor);
     const compatibilityError = orchestrationProtocolCompatibilityError(descriptor);
     if (compatibilityError !== null) {
       return yield* compatibilityError;
