@@ -97,7 +97,7 @@ export function OutdatedServerUpdateSection({
             : release
               ? release.targetVersion
                 ? gt("Version {version} is available.", { version: release.targetVersion })
-                : gt("No newer version is available yet.")
+                : (release.note ?? gt("No newer version is available yet."))
               : gt("This app needs a newer version of {product} on this machine.", {
                   product: "T3 Code",
                 })}

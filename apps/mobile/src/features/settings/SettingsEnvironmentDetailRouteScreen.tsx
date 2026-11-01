@@ -287,7 +287,7 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                           ? gt("Version {version} is available.", {
                               version: checkedRelease.targetVersion,
                             })
-                          : gt("You are up to date.")}
+                          : (checkedRelease.note ?? gt("You are up to date."))}
                       </Text>
                     ) : null}
                     {checkedRelease?.targetVersion &&
