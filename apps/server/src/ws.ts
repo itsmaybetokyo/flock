@@ -57,6 +57,7 @@ import {
   OrchestrationGetTurnDiffError,
   OrchestrationGetTurnSemanticDiffError,
   OrchestrationExpandTurnDiffGapError,
+  SemanticDiffError,
   ORCHESTRATION_V2_WS_METHODS,
   ORCHESTRATION_PROTOCOL_QUERY_PARAM,
   CLIENT_CAPABILITIES_QUERY_PARAM,
@@ -258,6 +259,8 @@ import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as IssueService from "./issue/IssueService.ts";
 import * as IssueTrackerConnections from "./issue/IssueTrackerConnections.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestSemanticDiff from "./pullRequest/PullRequestSemanticDiff.ts";
+import * as Diffy from "./diffy/Diffy.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -1490,6 +1493,7 @@ export const layerWsRpc = (
       const issues = yield* IssueService.IssueService;
       const issueTrackers = yield* IssueTrackerConnections.IssueTrackerConnections;
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
+      const pullRequestSemanticDiff = yield* PullRequestSemanticDiff.PullRequestSemanticDiff;
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const deviceService = yield* DeviceService.DeviceService;
       const deviceHostContext =
@@ -2098,6 +2102,14 @@ export const layerWsRpc = (
                 }),
             ),
           ),
+        [ORCHESTRATION_V2_WS_METHODS.getTurnDiffImage]: (input) =>
+          checkpointDiffQuery
+            .getTurnDiffImage(input)
+            .pipe(
+              Effect.mapError(
+                (cause) => new SemanticDiffError({ message: "Failed to read the image", cause }),
+              ),
+            ),
         [ORCHESTRATION_V2_WS_METHODS.searchThread]: (input) =>
           threadManagement
             .searchThread(input)
@@ -2850,6 +2862,12 @@ export const layerWsRpc = (
           withPullRequestViewer(input, pullRequests.threadComments(input)),
         [WS_METHODS.pullRequestsDiffFileContents]: (input) =>
           withPullRequestViewer(input, pullRequests.diffFileContents(input)),
+        [WS_METHODS.pullRequestsSemanticDiff]: (input) =>
+          withPullRequestViewer(input, pullRequestSemanticDiff.diff(input)),
+        [WS_METHODS.pullRequestsExpandDiffGap]: (input) =>
+          withPullRequestViewer(input, pullRequestSemanticDiff.expandGap(input)),
+        [WS_METHODS.pullRequestsDiffImage]: (input) =>
+          withPullRequestViewer(input, pullRequestSemanticDiff.image(input)),
         [WS_METHODS.pullRequestsFilesViewed]: (input) =>
           withPullRequestViewer(input, pullRequests.filesViewed(input)),
         [WS_METHODS.pullRequestsChangeBreakdown]: (input) =>
@@ -3275,6 +3293,9 @@ export const layerWsRpc = (
         [WS_METHODS.reviewGetBranchCommits]: (input) => review.getBranchCommits(input),
         [WS_METHODS.reviewGetDiffPreview]: (input) => review.getDiffPreview(input),
         [WS_METHODS.reviewGetDiffFileContents]: (input) => review.getDiffFileContents(input),
+        [WS_METHODS.reviewGetSemanticDiff]: (input) => review.getSemanticDiff(input),
+        [WS_METHODS.reviewExpandDiffGap]: (input) => review.expandDiffGap(input),
+        [WS_METHODS.reviewGetDiffImage]: (input) => review.getDiffImage(input),
         [WS_METHODS.terminalOpen]: (input) =>
           prepareTerminalLaunch(input).pipe(
             Effect.flatMap((launch) =>
@@ -3763,6 +3784,12 @@ export const layer = Layer.unwrap(
                 Layer.succeed(
                   PullRequestReviewGuideService.PullRequestReviewGuideService,
                   reviewGuides,
+                ),
+              ),
+              Layer.provide(
+                PullRequestSemanticDiff.layer.pipe(
+                  Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
+                  Layer.provide(Diffy.layer),
                 ),
               ),
               Layer.provide(Layer.succeed(PeerLinks.PeerLinks, peerLinks)),
