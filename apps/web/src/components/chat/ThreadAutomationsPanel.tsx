@@ -3,7 +3,7 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { useNavigate } from "@tanstack/react-router";
 import { T, useGT, useMessages, Var } from "gt-react";
-import type { MessageResolver } from "~/i18n/messages";
+import { getActiveLocale, type MessageResolver } from "~/i18n/messages";
 import { CalendarClockIcon, PencilIcon, PlayIcon, Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import {
@@ -19,8 +19,8 @@ import {
 
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { cn } from "../../lib/utils";
+import { scheduleLabel } from "@t3tools/client-runtime/scheduled-tasks";
 import { ScheduledRelativeLabel } from "../settings/ScheduledTasksSettings";
-import { scheduleLabel } from "../settings/scheduledTasksSettings.logic";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -48,7 +48,7 @@ function taskScheduleLine(
 ) {
   return (
     <>
-      {scheduleLabel(task.schedule, timeZone, task.nextRunAt, resolve)}
+      {scheduleLabel(task.schedule, timeZone, task.nextRunAt, resolve, getActiveLocale())}
       {task.blockedByPolicy !== undefined ? (
         ` · ${task.blockedByPolicy}`
       ) : task.enabled && task.nextRunAt !== null ? (
