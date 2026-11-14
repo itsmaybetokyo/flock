@@ -20,7 +20,7 @@ const MISMATCH_HINT =
   "Version mismatch. Try syncing the client and server to the same T3 Code version.";
 
 describe("versionSkew", () => {
-  it("updates only the proven npm prefix and safely quotes its path, or via `t3 update` off npm", () => {
+  it("updates only the proven install and safely quotes its paths, or via `t3 update` off npm", () => {
     expect(
       manualServerUpdateCommand("0.0.45", { kind: "npm-global", prefix: "/opt/node" }, true),
     ).toBe("npm install --global --prefix '/opt/node' t3@0.0.45");
@@ -31,6 +31,20 @@ describe("versionSkew", () => {
         true,
       ),
     ).toBe("npm install --global --prefix '/opt/maria'\\''s node' t3@0.0.45");
+    expect(
+      manualServerUpdateCommand("0.0.45", {
+        kind: "t3-launcher",
+        launcher: "t3",
+        baseDir: "/home/u/.t3",
+      }),
+    ).toBe("'t3' update --base-dir '/home/u/.t3' 0.0.45");
+    expect(
+      manualServerUpdateCommand("0.0.45", {
+        kind: "t3-launcher",
+        launcher: "/opt/maria's bin/t3",
+        baseDir: "/data/t3 home",
+      }),
+    ).toBe("'/opt/maria'\\''s bin/t3' update --base-dir '/data/t3 home' 0.0.45");
     expect(manualServerUpdateCommand("0.0.45", { kind: "bunx" }, true)).toBe("bunx t3@0.0.45");
     // Fork: its releases are not on npm, so the installed CLI updates itself.
     expect(

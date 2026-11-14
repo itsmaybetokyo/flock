@@ -277,7 +277,10 @@ export function ServerUpdateAction({
   const updatesDenial = managedUpdatesDenial(useManagedPolicy(environmentId));
   const update = useServerUpdate();
   // `t3 update` and npm's global install both replace the installed t3; the rest only relaunch.
-  const updatesInstall = installation?.kind === "npm-global" || !CLI_RELEASES_ON_NPM;
+  const updatesInstall =
+    installation?.kind === "npm-global" ||
+    installation?.kind === "t3-launcher" ||
+    !CLI_RELEASES_ON_NPM;
   const { copyToClipboard } = useCopyToClipboard<{ command: string }>({
     target: updatesInstall ? "update command" : "relaunch command",
     onCopy: ({ command }) => {

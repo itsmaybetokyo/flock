@@ -19,28 +19,26 @@ OUTPUT="${GITHUB_OUTPUT:-}"
 # after checking the fork really needs to diverge in it.
 FORK_PATHS=$(cat <<'EOF'
 .github/workflows/fork-release.yml
-.github/workflows/release-desktop.yml
 .github/workflows/sync-upstream.yml
 README.md
 assets/flock/
 apps/desktop/src/app/DesktopEnvironment.ts
+apps/mobile/assets/flock/
 apps/mobile/src/components/BrandMark.tsx
 apps/mobile/src/components/CompactBrandTitle.tsx
 apps/mobile/src/components/T3Wordmark.tsx
 apps/mobile/src/components/brandAssets.ts
 apps/mobile/src/lib/mobileBranding.ts
-apps/mobile/src/features/settings/environment-maintenance.test.ts
 apps/server/src/cli/update.test.ts
-apps/server/src/mcp/OrchestratorMcpService.test.ts
-apps/server/src/provider/agentContextBudget.json
-apps/server/src/scheduledTasks/ScheduledTaskService.test.ts
 apps/web/src/components/T3Wordmark.tsx
-apps/web/src/components/sidebar/UpdateEverythingDialog.tsx
+apps/web/src/components/sidebar/updateEverything.logic.test.ts
+apps/web/src/components/sidebar/updateEverything.logic.ts
+apps/web/src/components/sidebar/useUpdateEverything.ts
 apps/web/src/state/npmRelease.test.ts
 apps/web/src/state/npmRelease.ts
+packages/shared/src/cliRelease.test.ts
 packages/shared/src/cliRelease.ts
-scripts/lib/fork-brand.test.ts
-scripts/lib/fork-brand.ts
+packages/ssh/src/tunnel.test.ts
 EOF
 )
 

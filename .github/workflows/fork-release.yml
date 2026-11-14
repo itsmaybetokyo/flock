@@ -162,7 +162,6 @@ jobs:
       resource_key: win32-x64
       cli_archive: true
       launch_check: false
-      wsl_runtime: false
 
   desktop_windows_arm64:
     name: Desktop Windows arm64
@@ -188,7 +187,6 @@ jobs:
       resource_key: win32-arm64
       cli_archive: true
       launch_check: false
-      wsl_runtime: false
 
   desktop_linux_x64:
     name: Desktop Linux x64

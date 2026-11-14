@@ -11,11 +11,18 @@ const UPSTREAM_NAME = /T3 Code(?: \((?:Beta|Nightly)\))?(?! \((?:Alpha|Dev)\))/g
 const PRESERVED_MARKER = "Written by T3 Code:";
 const MARKER_PLACEHOLDER = "\u0000fork-brand-marker\u0000";
 
+// App handoff links (MCP connectors) carry the name URL-encoded.
+const UPSTREAM_NAME_ENCODED = "T3%20Code";
+
+const mentionsUpstreamName = (text: string) =>
+  text.includes("T3 Code") || text.includes(UPSTREAM_NAME_ENCODED);
+
 export function forkBrandText(text: string): string {
-  if (!text.includes("T3 Code")) return text;
+  if (!mentionsUpstreamName(text)) return text;
   return text
     .replaceAll(PRESERVED_MARKER, MARKER_PLACEHOLDER)
     .replace(UPSTREAM_NAME, FORK_APP_NAME)
+    .replaceAll(UPSTREAM_NAME_ENCODED, FORK_APP_NAME)
     .replaceAll(MARKER_PLACEHOLDER, PRESERVED_MARKER);
 }
 
@@ -25,10 +32,11 @@ export function forkBrandPlugin() {
     name: "fork-brand",
     enforce: "pre" as const,
     transform(code: string, id: string) {
-      if (id.includes("/node_modules/") || !code.includes("T3 Code")) return null;
+      if (id.includes("/node_modules/") || !mentionsUpstreamName(code)) return null;
       return { code: forkBrandText(code), map: null };
     },
-    transformIndexHtml: forkBrandText,
+    // After other plugins stamp the <title>.
+    transformIndexHtml: { order: "post" as const, handler: forkBrandText },
   };
 }
 

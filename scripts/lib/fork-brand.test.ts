@@ -10,6 +10,10 @@ describe("forkBrandText", () => {
     );
     assert.strictEqual(forkBrandText("T3 Code (Nightly)"), "Flock");
     assert.strictEqual(
+      forkBrandText("https://poke.com/integrations/new?name=T3%20Code&url="),
+      "https://poke.com/integrations/new?name=Flock&url=",
+    );
+    assert.strictEqual(
       forkBrandText('legacy: "T3 Code (Alpha)", dev: "T3 Code (Dev)"'),
       'legacy: "T3 Code (Alpha)", dev: "T3 Code (Dev)"',
     );

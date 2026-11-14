@@ -36,6 +36,7 @@
     "scripts/warm-dep-cache.ts",
     "../../scripts/lib/fork-brand.ts",
     "../../scripts/lib/public-config.ts",
+    "../../scripts/lib/tagged-source-version.ts",
     "../../scripts/lib/third-party-licenses.ts"
   ]
 }

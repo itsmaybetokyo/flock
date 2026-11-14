@@ -26,6 +26,7 @@ import {
   DesktopTelemetryControlMessage,
   type DesktopTelemetryControlMessage as DesktopTelemetryControlMessageValue,
 } from "@t3tools/contracts";
+import { isRunningDatabaseMigrations } from "@t3tools/shared/databaseMigrationLog";
 import { waitForHttpReady as waitForHttpReadyShared } from "@t3tools/shared/httpReadiness";
 
 import * as DesktopObservability from "../app/DesktopObservability.ts";
@@ -207,7 +208,7 @@ interface RunBackendProcessOptions extends DesktopBackendStartConfig {
   readonly outputDrainTimeout?: Duration.Duration;
   readonly onStarted?: (pid: number) => Effect.Effect<void>;
   readonly onExitObserved?: () => Effect.Effect<void>;
-  readonly onReady?: () => Effect.Effect<void>;
+  readonly onReady?: (pid: number) => Effect.Effect<void>;
   readonly onReadinessFailure?: (error: BackendReadinessTimeoutError) => Effect.Effect<void>;
   readonly onOutput?: (
     streamName: BackendProcessOutputStream,
@@ -254,8 +255,9 @@ export interface BackendInstanceSpec {
   readonly id: BackendInstanceId;
   readonly label: Effect.Effect<string>;
   readonly configResolve: Effect.Effect<DesktopBackendStartConfig, PlatformError.PlatformError>;
-  /** Receives the ready run's resolved URL; reading current config could race a subsequent restart. */
-  readonly onReady?: (httpBaseUrl: URL) => Effect.Effect<void>;
+  /** Receives the ready run's URL and pid; reading current config could race a subsequent restart. */
+  /** `pid` is undefined for a run attached to a server this desktop did not spawn. */
+  readonly onReady?: (httpBaseUrl: URL, pid: number | undefined) => Effect.Effect<void>;
   readonly onShutdown?: () => Effect.Effect<void>;
   readonly onPreflightFailed?: (failure: PreflightFailure) => Effect.Effect<boolean>;
   readonly onStateDirOwned?: () => Effect.Effect<void>;
@@ -490,21 +492,23 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
     ),
   );
   const outputFibers: Array<Fiber.Fiber<void, never>> = [];
+  const serverReady = yield* Deferred.make<void>();
 
   yield* options.onStarted?.(handle.pid) ?? Effect.void;
-  if (
-    options.bootstrap.desktopTelemetryControlFd !== undefined &&
-    options.onDesktopTelemetryControl !== undefined
-  ) {
+  if (options.bootstrap.desktopTelemetryControlFd !== undefined) {
     const controlFd = options.bootstrap.desktopTelemetryControlFd;
-    const handleControl = options.onDesktopTelemetryControl;
+    const handleControl = options.onDesktopTelemetryControl ?? (() => Effect.void);
     yield* handle.getOutputFd(controlFd).pipe(
       Stream.decodeText(),
       Stream.splitLines,
       Stream.filter((line) => line.trim().length > 0),
       Stream.runForEach((line) =>
         decodeDesktopTelemetryControlLine(line).pipe(
-          Effect.flatMap(handleControl),
+          Effect.flatMap((message) =>
+            message.type === "serverReady"
+              ? Deferred.succeed(serverReady, undefined)
+              : handleControl(message),
+          ),
           Effect.catchCause((cause) =>
             logBackendProcessWarning("ignored invalid desktop telemetry control message", {
               fd: controlFd,
@@ -576,15 +580,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
     );
   }
   // Cold WSL boots across /mnt/c can exceed one probe budget; retry while the backend is alive.
+  // HTTP polling stays as the fallback for backends without the control fd, such as WSL.
   const probeReadiness = Effect.fn("desktop.backendProcess.probeReadiness")(() =>
-    waitForHttpReady({
-      executablePath: options.executablePath,
-      entryPath: options.entryPath,
-      cwd: options.cwd,
-      httpBaseUrl: options.httpBaseUrl,
-      timeout: options.readinessTimeout ?? DEFAULT_BACKEND_READINESS_TIMEOUT,
-    }).pipe(
-      Effect.flatMap(() => options.onReady?.() ?? Effect.void),
+    Effect.raceFirst(
+      waitForHttpReady({
+        executablePath: options.executablePath,
+        entryPath: options.entryPath,
+        cwd: options.cwd,
+        httpBaseUrl: options.httpBaseUrl,
+        timeout: options.readinessTimeout ?? DEFAULT_BACKEND_READINESS_TIMEOUT,
+      }),
+      Deferred.await(serverReady),
+    ).pipe(
+      Effect.flatMap(() => options.onReady?.(handle.pid) ?? Effect.void),
       Effect.as(true),
       Effect.catchTags({
         BackendReadinessTimeoutError: (error) =>
@@ -711,6 +719,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
   const markReady = Effect.fn("desktop.backendInstance.onReady")(function* (
     runId: number,
     config: DesktopBackendStartConfig,
+    pid: number | undefined,
   ) {
     const isCurrentRun = yield* SubscriptionRef.modify(state, (latest) => {
       const activeRun = Option.getOrUndefined(latest.active);
@@ -731,7 +740,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
       return;
     }
 
-    yield* spec.onReady?.(config.httpBaseUrl) ?? Effect.void;
+    yield* spec.onReady?.(config.httpBaseUrl, pid) ?? Effect.void;
     if (config.runningDistro !== undefined && config.wslRuntimeId !== undefined) {
       yield* wslEnvironment.pruneRuntimes(config.runningDistro, config.wslRuntimeId);
     }
@@ -766,7 +775,7 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
     // Closing the run scope (stop) ends the watch, as a child exit does for spawned runs.
     const closed = yield* Deferred.make<void>();
     yield* Scope.addFinalizer(runScope, Deferred.succeed(closed, undefined));
-    const program = markReady(runId, config).pipe(
+    const program = markReady(runId, config, undefined).pipe(
       Effect.andThen(
         Effect.sleep(ATTACHED_SERVER_PROBE_INTERVAL).pipe(
           Effect.andThen(probe),
@@ -1040,9 +1049,15 @@ export const makeBackendInstance = Effect.fn("makeBackendInstance")(function* (
               ...run,
               exitObserved: true,
             })),
-          onReady: () => markReady(runId, config.value),
+          onReady: (pid) => markReady(runId, config.value, pid),
           onReadinessFailure: Effect.fn("desktop.backendInstance.onReadinessFailure")(
             function* (error) {
+              if (isRunningDatabaseMigrations(yield* Ref.get(outputTail))) {
+                yield* logInstanceWarning("backend is still migrating its database; waiting", {
+                  error: error.message,
+                });
+                return;
+              }
               yield* logInstanceWarning("backend readiness check failed during bootstrap", {
                 error: error.message,
               });

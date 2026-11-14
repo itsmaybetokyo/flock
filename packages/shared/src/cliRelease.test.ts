@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  CLI_RELEASES_PAGE_URL,
   cliArchiveTarCommand,
+  cliReleaseIndexPageUrl,
   type FetchReleaseText,
   findLatestCliRelease,
   newestCliReleaseVersion,
   parseChecksums,
 } from "./cliRelease.ts";
+
+// Fork builds update from their own repository, so the URLs come from the constant rather than a
+// literal owner/repo.
+const RELEASE_FEED_URL = `${CLI_RELEASES_PAGE_URL}.atom`;
 
 describe("cliRelease", () => {
   it("parses sha256sum output including binary-mode markers", () => {
@@ -55,14 +61,14 @@ describe("findLatestCliRelease", () => {
       respond(url);
   const feed = (...tags: Array<string>) =>
     new Response(
-      `<feed><id>tag:github.com,2008:https://github.com/seatedro/t3code/releases</id>${tags
+      `<feed><id>tag:github.com,2008:${CLI_RELEASES_PAGE_URL}</id>${tags
         .map((tag) => `<entry><id>tag:github.com,2008:Repository/1/${tag}</id></entry>`)
         .join("")}</feed>`,
     );
 
   it("reads nightly and preview releases from the feed without the anonymous API quota", async () => {
     const fetchText = serve((url) =>
-      url === "https://github.com/seatedro/t3code/releases.atom"
+      url === RELEASE_FEED_URL
         ? feed(
             "desktop-preview",
             "v1.0.0-preview.20260924.3",
@@ -83,11 +89,11 @@ describe("findLatestCliRelease", () => {
   it("finds a published preview beyond the ten-entry feed and first API page", async () => {
     const nightlies = Array.from({ length: 10 }, (_, i) => `v1.0.0-nightly.20260930.${i}`);
     const fetchText = serve((url) => {
-      if (url === "https://github.com/seatedro/t3code/releases.atom") return feed(...nightlies);
-      if (url === "https://api.github.com/repos/seatedro/t3code/releases?per_page=100&page=1") {
+      if (url === RELEASE_FEED_URL) return feed(...nightlies);
+      if (url === cliReleaseIndexPageUrl(1)) {
         return Response.json(Array.from({ length: 100 }, () => ({ tag_name: "v2.0.0" })));
       }
-      if (url === "https://api.github.com/repos/seatedro/t3code/releases?per_page=100&page=2") {
+      if (url === cliReleaseIndexPageUrl(2)) {
         return Response.json([
           { tag_name: "v1.0.0-preview.20260925.1", draft: true },
           { tag_name: "v1.0.0-preview.20260924.3" },
