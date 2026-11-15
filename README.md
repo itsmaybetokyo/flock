@@ -23,12 +23,15 @@ builds are published as prereleases; grab the newest one and pick your platform.
 | Platform | Asset |
 | --- | --- |
 | Windows x64 / arm64 | `Flock-<version>-x64.exe` (also `-arm64.exe`) |
-| Linux x64 / arm64 | `Flock-<version>-x86_64.AppImage` / `-arm64.AppImage`, or the matching `.deb` |
+| Linux x64 / arm64 | `Flock-Nightly-x86_64.AppImage` / `-arm64.AppImage`, or the matching `.deb` |
 | Android | `flock-<version>-android-arm64-v8a.apk` |
 | Command line | `t3-<version>-<platform>-<arch>.zip` or `.tar.gz` |
 
 The Android APK is signed with this fork's own key, not Google Play's. If T3 Code from the Play
 Store is already installed, uninstall it first; Android refuses an update whose key differs.
+
+The AppImage carries no version in its name on purpose: that is what lets the built-in updater
+replace it in place. The `.deb` and Windows installers do carry one.
 
 The self-contained CLI archives are checked against the `SHA256SUMS` asset on the same release.
 
