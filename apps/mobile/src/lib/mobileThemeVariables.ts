@@ -1,4 +1,5 @@
 import defaultThemeVariables from "../../generated-uniwind-default-theme-variables.json";
+import { withFlockAccent } from "./flockAccent";
 import {
   DEFAULT_MOBILE_THEME_ID,
   flattenThemeColor,
@@ -47,7 +48,9 @@ export function getMobileThemeRuntimeVariables(
   appearance: MobileThemeAppearance,
   platform: string,
 ): MobileThemeVariables {
-  return withVisibleSelection(platformThemeVariables(themeId, appearance, platform));
+  return withVisibleSelection(
+    withFlockAccent(platformThemeVariables(themeId, appearance, platform), themeId, appearance),
+  );
 }
 
 function platformThemeVariables(

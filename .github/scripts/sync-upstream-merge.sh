@@ -29,6 +29,9 @@ apps/mobile/src/components/CompactBrandTitle.tsx
 apps/mobile/src/components/T3Wordmark.tsx
 apps/mobile/src/components/brandAssets.ts
 apps/mobile/src/lib/mobileBranding.ts
+apps/mobile/src/lib/htmlRenderTheme.ts
+apps/mobile/src/lib/mobileTheme.ts
+apps/mobile/src/lib/mobileThemeVariables.ts
 apps/server/src/cli/update.test.ts
 apps/web/src/components/T3Wordmark.tsx
 apps/web/src/components/sidebar/updateEverything.logic.test.ts

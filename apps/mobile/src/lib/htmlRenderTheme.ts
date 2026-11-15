@@ -23,7 +23,7 @@ export function mobileHtmlRenderTheme(input: {
     input.appearance,
   );
   const colors = nativeColors(
-    input.systemColors
+    input.systemColors || input.themeId === DEFAULT_MOBILE_THEME_ID
       ? {
           ...palette,
           text: v["--color-foreground"],
