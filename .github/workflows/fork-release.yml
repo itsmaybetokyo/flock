@@ -151,7 +151,9 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.meta.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.meta.outputs.relay_url }}
       label: macOS arm64
-      runner: macos-15
+      # Self-hosted on the maintainer's Mac: hosted macOS arm64 runners went
+      # unacquired for days. Its runner sets its own HOME so builds stay out of ~.
+      runner: flock-mac
       platform: mac
       target: dmg
       arch: arm64
