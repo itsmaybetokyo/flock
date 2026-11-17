@@ -15,88 +15,101 @@ import {
   LOCAL_DEVICE_HOST_ID,
 } from "@t3tools/contracts";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
+import * as SessionStore from "../auth/SessionStore.ts";
 import * as DeviceService from "./DeviceService.ts";
 import * as DeviceHubProxy from "./DeviceHubProxy.ts";
 
-it.effect("preserves binary frames through the real socket proxy until the session ends", () =>
-  Effect.gen(function* () {
-    const ended = yield* Deferred.make<void>();
-    const hub = yield* Effect.acquireRelease(
-      Effect.sync(() => new NodeWS.WebSocketServer({ port: 0 })),
-      (server) =>
-        Effect.promise(
-          () =>
-            new Promise<void>((resolve) => {
-              for (const client of server.clients) client.terminate();
-              server.close(() => resolve());
-            }),
-        ),
-    );
-    if (!hub.address())
-      yield* Effect.promise(() => new Promise<void>((resolve) => hub.once("listening", resolve)));
-    const address = hub.address();
-    if (typeof address !== "object" || !address) throw new Error("Missing hub port");
-    hub.on("connection", (socket) => {
-      socket.send(Uint8Array.of(0x83));
-      socket.on("message", (data, binary) => socket.send(data, { binary }));
-    });
-    const services = yield* Layer.build(
-      HttpRouter.serve(DeviceHubProxy.layer, { disableListenLog: true }).pipe(
-        Layer.provideMerge(NodeHttpServer.layerTest),
-        Layer.provide(
-          Layer.succeed(EnvironmentAuth.EnvironmentAuth, {
-            awaitSessionEnd: () => Deferred.await(ended),
-            authenticateWebSocketUpgrade: () =>
-              Effect.succeed({
-                sessionId: AuthSessionId.make("test"),
-                subject: "test",
-                method: "bearer-access-token",
-                scopes: [AuthOrchestrationOperateScope],
+it.effect.each(["store invalidation", "session end"] as const)(
+  "preserves binary frames through the real socket proxy until %s",
+  (trigger) =>
+    Effect.gen(function* () {
+      const ended = yield* Deferred.make<void>();
+      const hub = yield* Effect.acquireRelease(
+        Effect.sync(() => new NodeWS.WebSocketServer({ port: 0 })),
+        (server) =>
+          Effect.promise(
+            () =>
+              new Promise<void>((resolve) => {
+                for (const client of server.clients) client.terminate();
+                server.close(() => resolve());
               }),
-          } as unknown as EnvironmentAuth.EnvironmentAuth["Service"]),
-        ),
-        Layer.provide(
-          Layer.succeed(DeviceService.DeviceService, {
-            currentReadiness: () =>
-              Effect.succeed({
-                hostId: LOCAL_DEVICE_HOST_ID,
-                hub: { origin: `http://127.0.0.1:${address.port}` },
-              }),
-          } as DeviceService.DeviceService["Service"]),
-        ),
-      ),
-    );
-    const origin = HttpServer.formatAddress(
-      Context.get(services, HttpServer.HttpServer).address,
-    ).replace(/^http/, "ws");
-    const client = yield* Effect.acquireRelease(
-      Effect.sync(
-        () =>
-          new WebSocket(
-            `${origin}/api/device-hub/vendor/serve-sim/helper/ws?device=test&wsTicket=test`,
           ),
-      ),
-      (socket) => Effect.sync(() => socket.close()),
-    );
-    client.binaryType = "arraybuffer";
-    const frames: number[][] = [];
-    const received = Promise.withResolvers<void>();
-    client.addEventListener("error", () => received.reject(new Error("Proxy failed")));
-    client.addEventListener("message", ({ data }) => {
-      frames.push(Array.from(new Uint8Array(data as ArrayBuffer)));
-      if (frames.length === 1) {
-        client.send(Uint8Array.of(0x03, 1));
-        client.send(Uint8Array.of(0x03, 2));
-      } else if (frames.length === 3) received.resolve();
-    });
-    const closed = Promise.withResolvers<void>();
-    client.addEventListener("close", () => closed.resolve());
-    yield* Effect.promise(() => received.promise);
-    expect(frames).toEqual([[0x83], [0x03, 1], [0x03, 2]]);
-    // Revoked, or tailnet trust turned off: the proxied stream must not outlive the session.
-    yield* Deferred.succeed(ended, undefined);
-    yield* Effect.promise(() => closed.promise);
-  }),
+      );
+      if (!hub.address())
+        yield* Effect.promise(() => new Promise<void>((resolve) => hub.once("listening", resolve)));
+      const address = hub.address();
+      if (typeof address !== "object" || !address) throw new Error("Missing hub port");
+      const upstreamClosed = Promise.withResolvers<void>();
+      hub.on("connection", (socket) => {
+        socket.once("close", upstreamClosed.resolve);
+        socket.send(Uint8Array.of(0x83));
+        socket.on("message", (data, binary) => socket.send(data, { binary }));
+      });
+      const invalidated = yield* Deferred.make<void>();
+      const services = yield* Layer.build(
+        HttpRouter.serve(DeviceHubProxy.layer, { disableListenLog: true }).pipe(
+          Layer.provideMerge(NodeHttpServer.layerTest),
+          Layer.provide(
+            Layer.mock(SessionStore.SessionStore, {
+              cookieName: "test",
+              legacyCookieName: undefined,
+              awaitInvalidation: () => Deferred.await(invalidated),
+            }),
+          ),
+          Layer.provide(
+            Layer.succeed(EnvironmentAuth.EnvironmentAuth, {
+              awaitSessionEnd: () => Deferred.await(ended),
+              authenticateWebSocketUpgrade: () =>
+                Effect.succeed({
+                  sessionId: AuthSessionId.make("test"),
+                  subject: "test",
+                  method: "bearer-access-token",
+                  scopes: [AuthOrchestrationOperateScope],
+                }),
+            } as unknown as EnvironmentAuth.EnvironmentAuth["Service"]),
+          ),
+          Layer.provide(
+            Layer.succeed(DeviceService.DeviceService, {
+              currentReadiness: () =>
+                Effect.succeed({
+                  hostId: LOCAL_DEVICE_HOST_ID,
+                  hub: { origin: `http://127.0.0.1:${address.port}` },
+                }),
+            } as DeviceService.DeviceService["Service"]),
+          ),
+        ),
+      );
+      const origin = HttpServer.formatAddress(
+        Context.get(services, HttpServer.HttpServer).address,
+      ).replace(/^http/, "ws");
+      const client = yield* Effect.acquireRelease(
+        Effect.sync(
+          () =>
+            new WebSocket(
+              `${origin}/api/device-hub/vendor/serve-sim/helper/ws?device=test&wsTicket=test`,
+            ),
+        ),
+        (socket) => Effect.sync(() => socket.close()),
+      );
+      client.binaryType = "arraybuffer";
+      const frames: number[][] = [];
+      const received = Promise.withResolvers<void>();
+      client.addEventListener("error", () => received.reject(new Error("Proxy failed")));
+      client.addEventListener("message", ({ data }) => {
+        frames.push(Array.from(new Uint8Array(data as ArrayBuffer)));
+        if (frames.length === 1) {
+          client.send(Uint8Array.of(0x03, 1));
+          client.send(Uint8Array.of(0x03, 2));
+        } else if (frames.length === 3) received.resolve();
+      });
+      const closed = Promise.withResolvers<void>();
+      client.addEventListener("close", () => closed.resolve());
+      yield* Effect.promise(() => received.promise);
+      expect(frames).toEqual([[0x83], [0x03, 1], [0x03, 2]]);
+      // Revoked, or tailnet trust turned off: the proxied stream must not outlive the session.
+      yield* Deferred.succeed(trigger === "store invalidation" ? invalidated : ended, undefined);
+      yield* Effect.promise(() => Promise.all([closed.promise, upstreamClosed.promise]));
+    }),
 );
 
 it.live("closes an upstream socket that is still connecting without an unhandled error", () =>
@@ -125,6 +138,7 @@ it.live("closes an upstream socket that is still connecting without an unhandled
     );
     const connection = yield* Effect.promise(() => dialed.promise);
     const abandoned = new Promise<void>((resolve) => connection.once("close", () => resolve()));
+    connection.resume();
     yield* Fiber.interrupt(reading);
     yield* Effect.promise(() => abandoned);
   }),

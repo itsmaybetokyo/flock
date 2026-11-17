@@ -21,6 +21,7 @@ const ALL_MCP_CAPABILITIES = [
   "worktree",
   "device",
   "pull-requests",
+  "issues",
   // Fork: the thread's agent gets the memory tool and its instructions.
   "memory",
 ] as const;

@@ -84,7 +84,7 @@ export function UsageProviderChart({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex gap-2">
-        <div className={cn("relative w-12 shrink-0", className)}>
+        <div aria-hidden className={cn("relative w-12 shrink-0", className)}>
           {ghost || max === 0
             ? null
             : [max, max / 2, 0].map((tick) => (
@@ -105,10 +105,9 @@ export function UsageProviderChart({
           format={format}
           formatTooltipPeriod={formatTooltipPeriod}
           className={className}
-          ariaLabel={`${hourly ? "Hourly" : "Daily"} ${metric === "tokens" ? "tokens" : "API-price cost"} by provider`}
         />
       </div>
-      <div className="relative ms-14 h-4 text-2xs text-muted-foreground">
+      <div aria-hidden className="relative ms-14 h-4 text-2xs text-muted-foreground">
         {labelIndexes.map((index) => {
           const column = columns[index];
           if (column === undefined) return null;
@@ -140,6 +139,39 @@ export function UsageProviderChart({
           );
         })}
       </div>
+
+      {/* The plot and its axes are hover-only; this carries the same figures for screen readers. */}
+      {ghost ? null : (
+        <table className="sr-only">
+          <caption>
+            {`${hourly ? "Hourly" : "Daily"} ${metric === "tokens" ? "tokens" : "API-price cost"} by provider`}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">{hourly ? "Hour" : "Day"}</th>
+              {providers.map((provider) => (
+                <th key={provider} scope="col">
+                  {PROVIDER_PRESENTATION[provider].label}
+                </th>
+              ))}
+              {providers.length > 1 ? <th scope="col">Total</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {columns.map((column) => (
+              <tr key={column.period}>
+                <th scope="row">{formatTooltipPeriod(column.period)}</th>
+                {providers.map((provider) => (
+                  <td key={provider}>
+                    {format(column.bands.find((band) => band.provider === provider)?.value ?? 0)}
+                  </td>
+                ))}
+                {providers.length > 1 ? <td>{format(column.total)}</td> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -152,7 +184,6 @@ function ChartPlot({
   format,
   formatTooltipPeriod,
   className,
-  ariaLabel,
 }: {
   readonly columns: readonly UsagePeriodColumn[];
   readonly max: number;
@@ -161,7 +192,6 @@ function ChartPlot({
   readonly format: (value: number) => string;
   readonly formatTooltipPeriod: (period: string) => string;
   readonly className: string;
-  readonly ariaLabel: string;
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
@@ -195,8 +225,7 @@ function ChartPlot({
   return (
     <div
       ref={plotRef}
-      role="img"
-      aria-label={ariaLabel}
+      aria-hidden
       className={cn("relative min-w-0 flex-1", className)}
       onMouseMove={(event) => {
         if (ghost || columns.length === 0) return;
