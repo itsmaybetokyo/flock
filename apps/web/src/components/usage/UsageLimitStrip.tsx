@@ -9,13 +9,12 @@ import {
   type LimitSeverity,
 } from "@t3tools/client-runtime/usage-ledger";
 import {
-  formatDuration,
   paceRemainingPercent,
-  resetCreditChoices,
   type LimitAccount,
   type LimitPoolWindow,
   type ResetCreditChoice,
 } from "@t3tools/shared/usageLimits";
+import { formatDuration, resetCreditChoices } from "@t3tools/shared/usageLimitsCopy";
 import {
   ChevronRightIcon,
   ExternalLinkIcon,

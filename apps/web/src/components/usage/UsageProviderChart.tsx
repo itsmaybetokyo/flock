@@ -140,37 +140,40 @@ export function UsageProviderChart({
         })}
       </div>
 
-      {/* The plot and its axes are hover-only; this carries the same figures for screen readers. */}
+      {/* The plot and its axes are hover-only; this carries the same figures for screen readers.
+          sr-only sits on a wrapper: Firefox does not clip a table's caption by the table's own box. */}
       {ghost ? null : (
-        <table className="sr-only">
-          <caption>
-            {`${hourly ? "Hourly" : "Daily"} ${metric === "tokens" ? "tokens" : "API-price cost"} by provider`}
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">{hourly ? "Hour" : "Day"}</th>
-              {providers.map((provider) => (
-                <th key={provider} scope="col">
-                  {PROVIDER_PRESENTATION[provider].label}
-                </th>
-              ))}
-              {providers.length > 1 ? <th scope="col">Total</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {columns.map((column) => (
-              <tr key={column.period}>
-                <th scope="row">{formatTooltipPeriod(column.period)}</th>
+        <div className="sr-only">
+          <table>
+            <caption>
+              {`${hourly ? "Hourly" : "Daily"} ${metric === "tokens" ? "tokens" : "API-price cost"} by provider`}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">{hourly ? "Hour" : "Day"}</th>
                 {providers.map((provider) => (
-                  <td key={provider}>
-                    {format(column.bands.find((band) => band.provider === provider)?.value ?? 0)}
-                  </td>
+                  <th key={provider} scope="col">
+                    {PROVIDER_PRESENTATION[provider].label}
+                  </th>
                 ))}
-                {providers.length > 1 ? <td>{format(column.total)}</td> : null}
+                {providers.length > 1 ? <th scope="col">Total</th> : null}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {columns.map((column) => (
+                <tr key={column.period}>
+                  <th scope="row">{formatTooltipPeriod(column.period)}</th>
+                  {providers.map((provider) => (
+                    <td key={provider}>
+                      {format(column.bands.find((band) => band.provider === provider)?.value ?? 0)}
+                    </td>
+                  ))}
+                  {providers.length > 1 ? <td>{format(column.total)}</td> : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

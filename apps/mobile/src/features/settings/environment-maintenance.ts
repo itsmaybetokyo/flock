@@ -7,6 +7,9 @@ import {
 } from "@t3tools/contracts";
 import { cliReleaseChannelOf, findLatestCliRelease } from "@t3tools/shared/cliRelease";
 import { compareSemverVersions } from "@t3tools/shared/semver";
+import { msg } from "gt-react-native";
+
+import { m } from "../../i18n/messages";
 
 export function canMaintainEnvironment(session: AuthSessionState | null, connected: boolean) {
   return (
@@ -45,7 +48,10 @@ export async function findEnvironmentUpdate(currentVersion: string, signal: Abor
   const channel = cliReleaseChannelOf(currentVersion);
   const latest = await findLatestCliRelease(channel, signal, fetch);
   if (latest === null) {
-    return { targetVersion: null, note: `No ${channel} release of T3 Code is published.` };
+    return {
+      targetVersion: null,
+      note: m(msg("No {channel} release of T3 Code is published.", { channel })),
+    };
   }
   return {
     targetVersion: compareSemverVersions(latest, currentVersion) > 0 ? latest : null,

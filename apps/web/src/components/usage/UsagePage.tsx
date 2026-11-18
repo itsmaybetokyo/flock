@@ -37,12 +37,8 @@ import {
   usageValue,
   type UsageMetric,
 } from "@t3tools/client-runtime/usage-ledger";
-import {
-  collectExternalUsageLinks,
-  collectLimitAccounts,
-  collectLimitNotices,
-  collectLimitPools,
-} from "@t3tools/shared/usageLimits";
+import { collectLimitAccounts, collectLimitPools } from "@t3tools/shared/usageLimits";
+import { collectExternalUsageLinks, collectLimitNotices } from "@t3tools/shared/usageLimitsCopy";
 import { isCompatibleUsageContractVersion, type MergedUsage } from "@t3tools/shared/usageMerge";
 import {
   formatCount,
@@ -50,11 +46,10 @@ import {
   formatHourShort,
   formatPercent,
   formatTokens,
-  formatUsageContractMismatch,
   formatUsd,
   makeWindow,
-  usageSourceMessages,
 } from "@t3tools/shared/usageFormat";
+import { formatUsageContractMismatch, usageSourceMessages } from "@t3tools/shared/usageFormatCopy";
 
 import { cn } from "../../lib/utils";
 import { usePrimarySettings } from "../../hooks/useSettings";

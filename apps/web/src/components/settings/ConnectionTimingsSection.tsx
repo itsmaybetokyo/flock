@@ -7,7 +7,7 @@ import {
 
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { isElectron } from "~/env";
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { namedClipboardTarget, useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "../ui/button";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 
@@ -84,7 +84,7 @@ export function ConnectionTimingsSection() {
   const timings = useAtomValue(ConnectionTimings.timingsAtom);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
     timeout: 1500,
-    target: "connection timings",
+    target: namedClipboardTarget("connection timings"),
   });
   return (
     <FoldedSettingsSection

@@ -29,7 +29,7 @@ import { ScopedSwitch } from "./ScopedSwitch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
@@ -54,6 +54,7 @@ function MemorySettingsBody() {
   const environmentId =
     environment?.connection.phase === "connected" ? environment.environmentId : null;
   const label = environment?.label ?? "this environment";
+  const searchableSetting = useSearchableSetting();
 
   return (
     <SettingsPageContainer>

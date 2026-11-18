@@ -6,7 +6,7 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 /** Saved on the environment serving this app, whatever the settings scope selects. */
 export function TailnetTrustSettings() {
@@ -14,6 +14,7 @@ export function TailnetTrustSettings() {
   const login = usePrimarySettings((settings) => settings.tailnetTrustLogin);
   const updateSettings = useUpdatePrimarySettings();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const searchableSetting = useSearchableSetting();
   // Whoever sets these decides who gets a full session without a code, so it takes a full session.
   const canWrite = useEnvironmentScopes(
     primaryEnvironmentId,

@@ -22,11 +22,13 @@ import {
   webhookFilterDraftsChanged,
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
+import { msg } from "gt-react";
 
 import {
   resolveProjectSettings,
   type LegacyProjectSettingsFields,
 } from "@t3tools/shared/projectSettings";
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 
 import type { ResolvedSettingsScope } from "./settingsScope";
@@ -112,64 +114,77 @@ export function toDateTimeLocalValue(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function scheduleDraftErrors(draft: DraftState) {
+export function scheduleDraftErrors(draft: DraftState, resolve: MessageResolver = m) {
+  const invalidRunTime = (description: string) => [
+    { title: resolve(msg("Invalid run time")), description },
+  ];
   if (draft.scheduleMode === "once") {
     const runAt = new Date(draft.runAt);
-    if (Number.isNaN(runAt.getTime()))
-      return [{ title: "Invalid run time", description: "Pick a date and time." }];
+    if (Number.isNaN(runAt.getTime())) return invalidRunTime(resolve(msg("Pick a date and time.")));
     // A time skipped by a daylight saving change parses to a different clock time.
     if (toDateTimeLocalValue(runAt) !== draft.runAt)
-      return [
-        { title: "Invalid run time", description: "That time does not exist in your time zone." },
-      ];
+      return invalidRunTime(resolve(msg("That time does not exist in your time zone.")));
     return [];
   }
   if (draft.scheduleMode === "fixed" && !draft.timeOfDay)
-    return [{ title: "Invalid run time", description: "Pick a time." }];
+    return invalidRunTime(resolve(msg("Pick a time.")));
   if (draft.scheduleMode !== "webhook") return [];
   if (parseMaxDeliveryAge(draft.maxDeliveryAgeMinutes) === undefined)
     return [
       {
-        title: "Invalid age limit",
-        description: `Enter whole minutes from 1 to ${MAX_WEBHOOK_DELIVERY_AGE_MINUTES}, or leave it blank.`,
+        title: resolve(msg("Invalid age limit")),
+        description: resolve(
+          msg("Enter whole minutes from 1 to {max}, or leave it blank.", {
+            max: MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
+          }),
+        ),
       },
     ];
   const errors: Array<{ title: string; description: string }> = [];
-  for (const [label, value] of [
-    ["Duplicate request key", draft.replayKey],
-    ["Coalesce key", draft.coalesceKey],
+  for (const [description, value] of [
+    [msg("Duplicate request key must contain a valid request placeholder."), draft.replayKey],
+    [msg("Coalesce key must contain a valid request placeholder."), draft.coalesceKey],
   ] as const) {
     if (value.trim() && !isWebhookDedupeTemplate(value.trim()))
       errors.push({
-        title: "Invalid webhook settings",
-        description: `${label} must contain a valid request placeholder.`,
+        title: resolve(msg("Invalid webhook settings")),
+        description: resolve(description),
       });
   }
   const window = draft.coalesceWindowSeconds.trim();
   if (window && (!Number.isInteger(Number(window)) || Number(window) < 10 || Number(window) > 3600))
     errors.push({
-      title: "Invalid webhook settings",
-      description: "Coalesce window must be whole seconds from 10 to 3600.",
+      title: resolve(msg("Invalid webhook settings")),
+      description: resolve(msg("Coalesce window must be whole seconds from 10 to 3600.")),
     });
   return errors;
 }
 
-export function webhookDeliveryLabel(delivery: {
-  readonly outcome: string;
-  readonly pendingWindow?: boolean | undefined;
-}) {
-  if (delivery.outcome === "accepted") return delivery.pendingWindow ? "Opened window" : "Ran";
-  const labels: Record<string, string> = {
-    dispatch_failed: "Run failed",
-    duplicate: "Duplicate",
-    coalesced: "Coalesced",
-    filtered: "Filtered",
-    rejected_signature: "Bad signature",
-    disabled: "Task paused",
-    rate_limited: "Rate limited",
-    expired: "Too old",
-  };
-  return labels[delivery.outcome] ?? delivery.outcome.replaceAll("_", " ");
+const WEBHOOK_DELIVERY_LABELS: Record<string, string> = {
+  dispatch_failed: msg("Run failed"),
+  duplicate: msg("Duplicate", { $context: "webhook delivery outcome" }),
+  coalesced: msg("Coalesced"),
+  filtered: msg("Filtered", { $context: "webhook delivery outcome" }),
+  rejected_signature: msg("Bad signature"),
+  disabled: msg("Task paused"),
+  rate_limited: msg("Rate limited"),
+  expired: msg("Too old"),
+};
+
+export function webhookDeliveryLabel(
+  delivery: {
+    readonly outcome: string;
+    readonly pendingWindow?: boolean | undefined;
+  },
+  resolve: MessageResolver = m,
+) {
+  if (delivery.outcome === "accepted") {
+    return delivery.pendingWindow
+      ? resolve(msg("Opened window"))
+      : resolve(msg("Ran", { $context: "webhook delivery outcome" }));
+  }
+  const label = WEBHOOK_DELIVERY_LABELS[delivery.outcome];
+  return label ? resolve(label) : delivery.outcome.replaceAll("_", " ");
 }
 
 export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedule | null {
