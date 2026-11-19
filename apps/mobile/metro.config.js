@@ -20,6 +20,13 @@ const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-str
 const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
 
 config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
+// GT validates locales while its modules are first evaluated, so the Intl polyfills have to run
+// before every module in the bundle, not only before the entry's own imports.
+const configuredGetPolyfills = config.serializer.getPolyfills;
+config.serializer.getPolyfills = (...args) => [
+  ...(configuredGetPolyfills?.(...args) ?? []),
+  require.resolve("./src/i18n/intl-polyfills.ts"),
+];
 config.resolver = {
   ...config.resolver,
   blockList: [

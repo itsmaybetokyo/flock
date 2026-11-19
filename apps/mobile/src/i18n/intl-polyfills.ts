@@ -16,3 +16,8 @@ import "@formatjs/intl-pluralrules/locale-data/pt";
 import "@formatjs/intl-pluralrules/locale-data/ru";
 import "@formatjs/intl-pluralrules/locale-data/sv";
 import "@formatjs/intl-pluralrules/locale-data/zh";
+
+// Temporary: tells the next release build's logcat whether these polyfills actually applied.
+console.log(
+  `[flock] Intl.Locale=${typeof Intl.Locale} DisplayNames=${typeof Intl.DisplayNames} PluralRules=${typeof Intl.PluralRules}`,
+);
