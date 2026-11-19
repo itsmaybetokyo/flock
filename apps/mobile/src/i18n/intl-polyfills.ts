@@ -17,7 +17,23 @@ import "@formatjs/intl-pluralrules/locale-data/ru";
 import "@formatjs/intl-pluralrules/locale-data/sv";
 import "@formatjs/intl-pluralrules/locale-data/zh";
 
-// Temporary: tells the next release build's logcat whether these polyfills actually applied.
-console.log(
-  `[flock] Intl.Locale=${typeof Intl.Locale} DisplayNames=${typeof Intl.DisplayNames} PluralRules=${typeof Intl.PluralRules}`,
-);
+// Temporary: tells the next release build's logcat whether these polyfills actually applied, and
+// whether GT's locale check agrees, since a DisplayNames without English data also rejects "en".
+const intl = Intl as unknown as {
+  Locale?: new (tag: string) => { maximize(): { toString(): string } };
+  DisplayNames?: new (
+    locales: string[],
+    options: { type: "language" },
+  ) => { of(code: string): string };
+  PluralRules?: new (locales: string[]) => { select(count: number): string };
+};
+const intlTypes = `Locale=${typeof intl.Locale} DisplayNames=${typeof intl.DisplayNames} PluralRules=${typeof intl.PluralRules}`;
+try {
+  const displayNames = new intl.DisplayNames!(["en"], { type: "language" });
+  const pluralRules = new intl.PluralRules!(["en"]);
+  console.log(
+    `[flock] intl ${intlTypes} maximize=${new intl.Locale!("en").maximize().toString()} en=${displayNames.of("en")} one=${pluralRules.select(1)}`,
+  );
+} catch (error) {
+  console.log(`[flock] intl ${intlTypes} failed=${String(error)}`);
+}
