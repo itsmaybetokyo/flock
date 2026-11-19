@@ -20,11 +20,12 @@ const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-str
 const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
 
 config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
-// GT validates locales while its modules are first evaluated, so the Intl polyfills have to run
-// before every module in the bundle, not only before the entry's own imports.
-const configuredGetPolyfills = config.serializer.getPolyfills;
-config.serializer.getPolyfills = (...args) => [
-  ...(configuredGetPolyfills?.(...args) ?? []),
+// GT validates locales while its modules are first evaluated, so the Intl polyfills have to be
+// required before the entry, not merely as the entry's first import. These run after Expo's
+// runtime and before the app modules, which need no Metro polyfill caveats.
+const configuredGetModulesRunBeforeMainModule = config.serializer.getModulesRunBeforeMainModule;
+config.serializer.getModulesRunBeforeMainModule = (...args) => [
+  ...(configuredGetModulesRunBeforeMainModule?.apply(config.serializer, args) ?? []),
   require.resolve("./src/i18n/intl-polyfills.ts"),
 ];
 config.resolver = {
