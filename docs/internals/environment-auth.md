@@ -27,54 +27,23 @@ model. DPoP binds a token to a client's proof key; an invalid proof must fail
 rather than fall back to bearer authentication. The OAuth token-exchange
 vocabulary gives these grants a familiar meaning.
 
-### Tailnet devices skip pairing
+A device that exchanges a plain pairing link with a DPoP proof gets a one-hour
+token on a session that renews: presenting the token, even expired, with a
+proof from the same key moves the session's expiry 30 days out and returns a
+fresh token for the same session. The session itself must still be unexpired
+and unrevoked, so a device idle past the window pairs again. Renewal stays in place rather than issuing a
+successor, so live sockets keep their session, Sharing & access shows one row
+per device for its whole renewal window, and one revoke ends it. T3 Connect,
+CLI and desktop sessions never renew, so unlinking Connect or rotating
+their credential still cuts a device off.
 
-With `tailnetTrustEnabled`, [TailnetTrust](../../apps/server/src/tailnet/TailnetTrust.ts)
-issues a standard bearer session, without a code, to another device of the
-machine's own Tailscale user. Identity comes only from tailscaled's `whois` of
-the socket's remote address, never from the request, and only for a direct
-connection: the socket's local address must be one of this node's own Tailscale
-addresses, since other CGNAT overlays share the range. Tailscale Serve is not a
-way in. Its identity headers reach the server from loopback, where any local
-process or proxy could write them, and Serve can target a Unix socket only off
-Windows.
-
-A web page on a trusted device must not borrow its identity, because the
-session is a shell. Requests with an `Origin`, or a `Sec-Fetch-Site` other than
-`none`, are refused, and Host must be one of this node's names or addresses,
-which defeats DNS rebinding. The tailnet-session handler strips CORS from its
-own responses, so the decision follows the route that matched, whatever path
-spelling the router accepted. Native clients send none of these headers.
-Requests carrying proxy headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`,
-`Via`, Serve's) are refused too: a proxy on a trusted device would pass its own
-clients through as that device. A plain TCP forwarder adds nothing to detect.
-
-The owner is the machine's own user, matched by login and user id, since the
-same login in another tailnet is another user. A tagged machine trusts the
-configured `tailnetTrustLogin`. The machine itself never qualifies, since any
-local program can reach its own address, and neither do tagged, shared-in or
-sharee nodes, nor subnet routers and exit nodes, which speak for hosts behind
-them. Discovery lists only the owner's machines by the same rule, and needs an
-ordinary session with `access:read`.
-
-Setting either key takes every standard scope
-([requiredScopesForServerSettingsPatch](../../packages/contracts/src/settings.ts)),
-because it decides who gets them without a code. A session's subject is
-stamped with the node and the identity it was admitted under. Later requests do
-not consult Tailscale for the device, so learned routes keep working, but
-[TailnetSessionGate](../../apps/server/src/auth/TailnetSessionGate.ts) refuses
-those sessions while trust is off and revokes one whose stamp trust no longer
-covers, such as after a login change or this machine signing in to Tailscale as
-someone else. It fails closed where the server does not provide it. Every
-socket, RPC and media alike, races `EnvironmentAuth.awaitSessionEnd`, so it
-closes when its session is revoked or the gate stops admitting it, even if
-revocation failed. While Tailscale cannot say who this machine is, the gate
-answers with a retryable error rather than a refusal, so clients wait instead
-of re-pairing.
-Every observed off, and every change of trusted identity, revokes them; startup
-does so before commands are ready, and an admission that raced a turn-off
-revokes its own session. Each device holds one session, and asking again
-replaces it, so revoking a device that is still trusted only signs it out once.
+A [peer link](remote.md#peer-links)'s session renews on use instead: its
+bearer token is never reissued, so the session row alone holds its deadline and
+the token's own expiry is ignored. Authenticating a call from it moves the
+row 30 days out, at most once a day so a busy link does not write on every
+call. Only an unexpired, unrevoked row moves, so an idle link still ends after
+30 days and a revoke is final. Other MCP clients keep the fixed 30 days their
+token carries.
 
 ### Guest links are not sessions
 

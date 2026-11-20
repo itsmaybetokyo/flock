@@ -3,6 +3,7 @@ import { createEnvironmentSessionAtoms } from "@t3tools/client-runtime/state/ses
 import {
   type AuthEnvironmentScope,
   type AuthSessionState,
+  AuthRelayConfigureScope,
   type EnvironmentId,
   sessionGrantsScope,
 } from "@t3tools/contracts";
@@ -34,17 +35,18 @@ export function useEnvironmentScope(
   );
 }
 
-/** Whether the environment's session holds every scope, such as a settings patch requires. */
-export function useEnvironmentScopes(
-  environmentId: EnvironmentId | null,
-  scopes: ReadonlyArray<AuthEnvironmentScope>,
-): boolean {
-  const result = useAtomValue(
+export function useEnvironmentCanConfigureRelay(environmentId: EnvironmentId | null): boolean {
+  return useAtomValue(
     environmentId === null
       ? EMPTY_SESSION_STATE_ATOM
       : environmentSession.sessionStateAtom(environmentId),
+    (result) => sessionHasScope(result, AuthRelayConfigureScope),
   );
-  return scopes.every((scope) => sessionHasScope(result, scope));
+}
+
+export function readEnvironmentCanConfigureRelay(environmentId: EnvironmentId): boolean {
+  const result = appAtomRegistry.get(environmentSession.sessionStateAtom(environmentId));
+  return sessionHasScope(result, AuthRelayConfigureScope);
 }
 
 export function sessionHasScope(
