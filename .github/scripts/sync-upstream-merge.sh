@@ -30,7 +30,6 @@ apps/mobile/src/components/CompactBrandTitle.tsx
 apps/mobile/src/components/T3Wordmark.tsx
 apps/mobile/src/components/brandAssets.ts
 apps/mobile/metro.config.js
-apps/mobile/src/i18n/intl-polyfills.ts
 apps/mobile/src/lib/mobileBranding.ts
 apps/mobile/src/lib/htmlRenderTheme.ts
 apps/mobile/src/lib/mobileTheme.ts
