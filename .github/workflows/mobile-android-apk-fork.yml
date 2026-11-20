@@ -46,6 +46,9 @@ on:
         required: true
       ANDROID_KEY_PASSWORD:
         required: true
+      GOOGLE_SERVICES_JSON_BASE64:
+        description: Firebase config for the T3 Connect FCM project, base64-encoded
+        required: false
 
 concurrency:
   group: mobile-android-apk-fork-${{ github.workflow }}
@@ -106,6 +109,40 @@ jobs:
             echo "T3CODE_CLERK_JWT_TEMPLATE=$(value T3CODE_CLERK_JWT_TEMPLATE)"
             echo "T3CODE_RELAY_URL=$(value T3CODE_RELAY_URL)"
           } >> "$GITHUB_ENV"
+
+      # Without Firebase the app cannot obtain an FCM token, so relay device
+      # registration never reports a push token and notifications stay off.
+      - name: Install Firebase config
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GOOGLE_SERVICES_JSON:-}" ]]; then
+            echo "::warning::GOOGLE_SERVICES_JSON_BASE64 is not set; this APK cannot register for device notifications."
+            exit 0
+          fi
+          case "$APP_VARIANT" in
+            development) package="com.t3tools.t3code.dev" ;;
+            preview) package="com.t3tools.t3code.preview" ;;
+            *) package="com.t3tools.t3code" ;;
+          esac
+          config="$RUNNER_TEMP/google-services.json"
+          case "$GOOGLE_SERVICES_JSON" in
+            \{*) printf '%s' "$GOOGLE_SERVICES_JSON" > "$config" ;;
+            *) printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > "$config" ;;
+          esac
+          node - "$config" "$package" <<'NODE'
+          const fs = require("node:fs");
+          const [file, pkg] = process.argv.slice(2);
+          const json = JSON.parse(fs.readFileSync(file, "utf8"));
+          const packages = (json.client ?? []).map((c) => c.client_info?.android_client_info?.package_name);
+          if (!packages.includes(pkg)) {
+            console.error(`google-services.json has no client for ${pkg} (found: ${packages.join(", ")})`);
+            process.exit(1);
+          }
+          NODE
+          echo "T3CODE_ANDROID_GOOGLE_SERVICES_FILE=$config" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@v6

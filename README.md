@@ -70,6 +70,15 @@ into `rohit/changes` and rebuilds the releases, so upstream's fixes and features
 manual rebase. Only the fork's own surface stays local: the Flock icon and name, the signed Android
 APK, and the release workflow.
 
+## Android notifications
+
+Device notifications need a Firebase Cloud Messaging token from the same Firebase project the hosted
+T3 Connect relay sends through. This fork has no `google-services.json` for that project, so the APK
+cannot register a push token and Settings → Notifications reports that registration failed. To
+enable it, set the `GOOGLE_SERVICES_JSON_BASE64` repository secret to the config for Android package
+`com.t3tools.t3code` (raw JSON or base64); the APK build installs it before prebuild. A config from a
+different Firebase project registers the device but never receives pushes.
+
 ## Documentation
 
 Full docs live in [docs/](./docs).

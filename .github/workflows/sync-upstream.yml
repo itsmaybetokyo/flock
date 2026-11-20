@@ -162,6 +162,25 @@ jobs:
           if problems:
               sys.exit("package.json is missing upstream entries:\n" + "\n".join(problems))
           print("OK: every package.json is a superset of upstream")
+
+          # These fork symbols live in files upstream also owns: a conflict silently
+          # takes upstream's side and leaves the adapters importing missing exports.
+          fork_required = {
+              "packages/provider-core/src/server/orchestrationInstructions.ts": (
+                  "T3_CODE_MEMORY_INSTRUCTIONS", "hasT3Memory",
+              ),
+              "packages/provider-pi/src/server/mcpExtensionSource.ts": ("T3_PI_MEMORY_ENV",),
+              "apps/server/src/mcp/McpInvocationContext.ts": ("memoryToolVisible",),
+              "apps/server/src/mcp/McpHttpServer.ts": ("memoryEnabled: yield* memoryEnabled",),
+              "apps/server/src/orchestration-v2/ProviderSessionManager.ts": ('capabilities.add("memory")',),
+          }
+          for path, fragments in fork_required.items():
+              with open(path, encoding="utf-8") as handle:
+                  text = handle.read()
+              for fragment in fragments:
+                  if fragment not in text:
+                      sys.exit(f"{path}: fork code {fragment!r} was lost in the merge")
+          print("OK: fork-only memory wiring survived the merge")
           PY
 
       - name: Push the synced branch
