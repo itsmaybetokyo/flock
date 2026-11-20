@@ -24,6 +24,8 @@ const ALL_MCP_CAPABILITIES = [
   "pull-requests",
   "issues",
   "background-wait",
+  // Fork: the thread's agent gets the memory tool and its instructions.
+  "memory",
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 
@@ -157,6 +159,8 @@ export interface McpInvocationScope {
    * see the URL they were configured with, so links they must fetch carry it. Unset in-process.
    */
   readonly origin?: string | undefined;
+  /** Fork: this environment's `memoryEnabled` setting when the request arrived. */
+  readonly memoryEnabled?: boolean;
   /** False when the calling thread's project is on no forge T3 reads; `/mcp` reads it per request. */
   readonly forge?: boolean;
 }
@@ -218,6 +222,20 @@ export const hiddenWhileLinksOff = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope?.linkedEnvironments !== false;
+};
+
+/**
+ * `McpSchema.EnabledWhen` for the memory tool: a thread credential issued with memory, which also
+ * carries the memory instructions, while the setting is still on.
+ */
+export const memoryToolVisible = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return (
+    scope?.memoryEnabled === true &&
+    scope.capabilities.has("memory") &&
+    scope.thread?.subagent !== true
+  );
 };
 
 /** `McpSchema.EnabledWhen` for tools that act on the thread's forge, hidden where it has none. */

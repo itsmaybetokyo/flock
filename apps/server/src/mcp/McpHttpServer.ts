@@ -282,6 +282,10 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     Effect.map((settings) => settings.linkedEnvironmentsEnabled),
     Effect.orElseSucceed(() => false),
   );
+  const memoryEnabled = serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.memoryEnabled),
+    Effect.orElseSucceed(() => false),
+  );
   const pullRequests = yield* Effect.serviceOption(PullRequestService.PullRequestService);
   const projections = yield* Effect.serviceOption(ProjectionStore.ProjectionStoreV2);
   // Every request reads it, and a remote added mid-thread shows the tools within a minute.
@@ -337,7 +341,13 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
       limited.thread === undefined
         ? undefined
         : yield* Cache.get(forgeOfThread, limited.thread.threadId);
-    return { ...limited, linkedEnvironments, origin, ...(forge === undefined ? {} : { forge }) };
+    return {
+      ...limited,
+      linkedEnvironments,
+      origin,
+      ...(forge === undefined ? {} : { forge }),
+      memoryEnabled: yield* memoryEnabled,
+    };
   });
   // Untraced: a span here would wrap the tool call; the HTTP server span already covers it.
   return Effect.fnUntraced(function* (httpEffect) {
