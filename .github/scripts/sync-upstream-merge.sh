@@ -11,7 +11,8 @@
 # package.json missing an entry upstream declares.
 set -euo pipefail
 
-UPSTREAM="${UPSTREAM:-seatedro/t3code}"
+UPSTREAM="${UPSTREAM:-pingdotgg/t3code}"
+UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
 BRANCH="${BRANCH:-rohit/changes}"
 OUTPUT="${GITHUB_OUTPUT:-}"
 
@@ -28,6 +29,8 @@ apps/mobile/src/components/BrandMark.tsx
 apps/mobile/src/components/CompactBrandTitle.tsx
 apps/mobile/src/components/T3Wordmark.tsx
 apps/mobile/src/components/brandAssets.ts
+apps/mobile/metro.config.js
+apps/mobile/src/i18n/intl-polyfills.ts
 apps/mobile/src/lib/mobileBranding.ts
 apps/mobile/src/lib/htmlRenderTheme.ts
 apps/mobile/src/lib/mobileTheme.ts
@@ -80,10 +83,10 @@ take_side() {
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git remote add upstream "https://github.com/$UPSTREAM.git" 2>/dev/null || true
-git fetch --no-tags upstream "$BRANCH"
+git fetch --no-tags upstream "$UPSTREAM_BRANCH"
 
 if git merge-base --is-ancestor FETCH_HEAD HEAD; then
-  echo "Already up to date with $UPSTREAM $BRANCH."
+  echo "Already up to date with $UPSTREAM $UPSTREAM_BRANCH."
   set_output "changed=false"
   exit 0
 fi

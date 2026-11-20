@@ -4,8 +4,8 @@
 
 <h1 align="center">Flock</h1>
 
-a T3 Code fork. Its code comes from [seatedro/t3code](https://github.com/seatedro/t3code), itself a
-fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code).
+a T3 Code fork. Its code comes from [pingdotgg/t3code](https://github.com/pingdotgg/t3code), with the
+fork's own branding, signing, and release workflows on top.
 
 ---
 
@@ -65,7 +65,7 @@ Flock controls a provider; it does not replace one.
 
 ## Following upstream
 
-Flock tracks [seatedro/t3code](https://github.com/seatedro/t3code). A daily job merges upstream
+Flock tracks [pingdotgg/t3code](https://github.com/pingdotgg/t3code). A daily job merges upstream
 into `rohit/changes` and rebuilds the releases, so upstream's fixes and features arrive without a
 manual rebase. Only the fork's own surface stays local: the Flock icon and name, the signed Android
 APK, and the release workflow.

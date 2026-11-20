@@ -1,13 +1,13 @@
 name: Sync upstream
 
-# This repo is a fork of a fork: seatedro/t3code is the upstream we follow.
-# Every run fast-forwards `main` to upstream, merges upstream's `rohit/changes`
-# into ours, and fast-forwards the fork feature branches that only held an
+# This repo is a fork of pingdotgg/t3code, so that is the upstream we follow.
+# Every run fast-forwards `main` to upstream, merges upstream's `main` into our
+# fork branch, and fast-forwards the fork feature branches that only held an
 # older snapshot of it. A push to `rohit/changes` then triggers the Windows
 # release build.
 #
 # The merge lives in .github/scripts/sync-upstream-merge.sh so a failing run can
-# be reproduced locally: `UPSTREAM=seatedro/t3code bash
+# be reproduced locally: `UPSTREAM=pingdotgg/t3code UPSTREAM_BRANCH=main bash
 # .github/scripts/sync-upstream-merge.sh`. Conflicts are resolved per path,
 # never with a merge strategy option: `-X ours` answered every conflict the same
 # way, so a file the fork never meant to change stayed at whatever copy an older
@@ -40,7 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       REPO: ${{ github.repository }}
-      UPSTREAM: seatedro/t3code
+      UPSTREAM: pingdotgg/t3code
+      UPSTREAM_BRANCH: main
       BRANCH: rohit/changes
       # Fork branches that carry no commits of their own: each one is only an
       # older snapshot of BRANCH, so it is safe to fast-forward. A branch with
@@ -84,6 +85,7 @@ jobs:
         id: merge
         env:
           UPSTREAM: ${{ env.UPSTREAM }}
+          UPSTREAM_BRANCH: ${{ env.UPSTREAM_BRANCH }}
           BRANCH: ${{ env.BRANCH }}
         run: bash .github/scripts/sync-upstream-merge.sh
 
