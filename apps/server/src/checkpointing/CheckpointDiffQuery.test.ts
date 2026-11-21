@@ -13,7 +13,6 @@ import type { ProjectionCheckpointContext } from "../orchestration-v2/Projection
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
-import * as Diffy from "../diffy/Diffy.ts";
 import * as CheckpointDiffQuery from "./CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 import { CheckpointRefUnavailableError, CheckpointTurnRangeUnavailableError } from "./Errors.ts";
@@ -56,7 +55,6 @@ function layerFor(input: {
   return CheckpointDiffQuery.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Diffy.layer,
         Layer.mock(ThreadManagement.ThreadManagementService)({
           getCheckpointContext: () => input.projection,
         }),
@@ -66,7 +64,7 @@ function layerFor(input: {
         }),
       ),
     ),
-    Layer.provideMerge(NodeCrypto.layer),
+    Layer.provideMerge(Layer.merge(NodeCrypto.layer, NodeServices.layer)),
   );
 }
 
@@ -199,7 +197,6 @@ const layerStore = CheckpointStore.layer.pipe(
 );
 const layerTest = Layer.merge(layerStore, layerVcsProcess).pipe(
   Layer.provideMerge(NodeServices.layer),
-  Layer.provideMerge(Diffy.layer),
   Layer.provideMerge(NodeCrypto.layer),
 );
 
@@ -322,6 +319,8 @@ it.effect("truncates a storage-cut UTF-8 character without replacement text", ()
     const result = yield* query.getTurnDiff({ threadId, fromTurnCount: 0, toTurnCount: 2 });
     assert.isAtMost(Buffer.byteLength(result.diff), 10_000_000);
     assert.isTrue(result.diff === `${prefix}\n\n[truncated]`);
+    // A thread without tracked repositories keeps the payload it always had.
+    assert.notProperty(result, "repositories");
   }).pipe(Effect.provide(layer));
 });
 
@@ -347,131 +346,90 @@ it.effect("preserves an exact-fit filtered patch across batches without a marker
   }).pipe(Effect.provide(layer));
 });
 
-it.effect("diffs a turn semantically from real checkpoint contents", () =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const process = yield* VcsProcess.VcsProcess;
-    const store = yield* CheckpointStore.CheckpointStore;
-    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-semantic-diff-" });
-    const git = (args: ReadonlyArray<string>) =>
-      process.run({ operation: "CheckpointDiffQuery.test.git", command: "git", cwd, args });
-    const write = (file: string, contents: string) =>
-      fs.writeFileString(path.join(cwd, file), contents);
-    const rust = (body: string) => `fn total() -> u32 {\n    ${body}\n}\n\nfn other() {}\n`;
-    const renamed = Array.from({ length: 40 }, (_, line) => `line ${line} ✓\n`).join("");
-    yield* git(["init"]);
-    yield* git(["config", "user.email", "test@test.com"]);
-    yield* git(["config", "user.name", "Test"]);
-    yield* write("lib.rs", rust("1 + 1"));
-    yield* write("gone.txt", "bye\n");
-    yield* write("old-name.txt", renamed);
-    yield* write("big.txt", "small\n");
-    yield* write(
-      "pipe.ts",
-      "function f(hash: string) {\n  return parse(\n    Result.getOrThrow(decode(hash.slice(1))),\n  );\n}\n",
-    );
-    yield* git(["add", "."]);
-    yield* git(["commit", "-m", "initial"]);
-
-    const scopeId = CheckpointScopeId.make("scope:semantic-runtime");
-    const runId = RunId.make("run:semantic-runtime");
-    const fromCheckpointRef = yield* checkpointRefForScopeOrdinal({
-      scopeId,
-      ordinalWithinScope: 0,
-    });
-    const toCheckpointRef = CheckpointRef.make("refs/t3/test/semantic-after");
-    yield* store.captureCheckpoint({ cwd, checkpointRef: fromCheckpointRef });
-    yield* write("lib.rs", rust("2 + 2"));
-    yield* fs.remove(path.join(cwd, "gone.txt"));
-    yield* fs.rename(path.join(cwd, "old-name.txt"), path.join(cwd, "new-name.txt"));
-    yield* write("added.txt", "héllo\n");
-    yield* write("big.txt", "x".repeat(1_100_000));
-    // Diffy aligns this refactor differently from git: it counts +6 -3 where git counts +5 -2.
-    yield* write(
-      "pipe.ts",
-      "function f(hash: string) {\n  return pipe(\n    hash.slice(1),\n    decode,\n    Result.getOrThrow,\n    parse,\n  );\n}\n",
-    );
-    yield* store.captureCheckpoint({ cwd, checkpointRef: toCheckpointRef });
-
-    const query = yield* CheckpointDiffQuery.make.pipe(
-      Effect.provide(
-        Layer.mock(ThreadManagement.ThreadManagementService)({
-          getCheckpointContext: () =>
-            Effect.succeed({
-              runs: [{ id: runId, ordinal: 1, status: "completed" }],
-              checkpointScopes: [{ id: scopeId, runId, kind: "root_run", cwd }],
-              checkpoints: [
-                {
-                  scopeId,
-                  runId,
-                  ordinalWithinScope: 1,
-                  appRunOrdinal: 1,
-                  status: "ready",
-                  ref: toCheckpointRef,
-                },
-              ],
-            }),
-        }),
-      ),
-    );
-    const range = { threadId, fromTurnCount: 0, toTurnCount: 1 };
-    const result = yield* query.getTurnSemanticDiff(range);
-
-    assert.deepEqual(
-      result.files?.map((file) => [file.status, file.old_path, file.new_path]),
-      [
-        ["added", undefined, "added.txt"],
-        ["deleted", "gone.txt", undefined],
-        ["modified", "lib.rs", "lib.rs"],
-        ["renamed", "old-name.txt", "new-name.txt"],
-        ["modified", "pipe.ts", "pipe.ts"],
+it.effect("adds a patch for each tracked repository that changed in the range", () => {
+  const projection = makeProjection();
+  const repository = (name: string, cwd: string, ordinals: ReadonlyArray<number>) => {
+    const id = CheckpointScopeId.make(`scope:checkpoint-diff-v2:${name}`);
+    return {
+      scope: {
+        id,
+        runId: firstRunId,
+        kind: "manual" as const,
+        cwd,
+        label: name,
+        repositoryPath: cwd,
+      },
+      checkpoints: ordinals.map((ordinalWithinScope) => ({
+        scopeId: id,
+        runId: ordinalWithinScope === 2 ? secondRunId : null,
+        ordinalWithinScope,
+        appRunOrdinal: null,
+        status: "ready" as const,
+        ref: CheckpointRef.make(`refs/t3/test/${name}/${ordinalWithinScope}`),
+      })),
+    };
+  };
+  const sibling = repository("shared", "/work/shared", [1, 2]);
+  // Nothing before the range's end, so there is no patch to make.
+  const nested = repository("ui", "/work/app/packages/ui", [2]);
+  // Became a repository after the range, so the thread's own patch still covers its folder.
+  const later = repository("later", "/work/app/packages/later", [3]);
+  const diffCheckpoints = vi.fn((input: CheckpointStore.DiffCheckpointsInput) =>
+    Effect.succeed(input.format === "numstat" ? "1\t0\tfile.ts\0" : `patch of ${input.cwd}`),
+  );
+  const layer = layerFor({
+    projection: Effect.succeed({
+      ...projection,
+      checkpointScopes: [
+        ...projection.checkpointScopes.map((scope) => ({ ...scope, cwd: "/work/app" })),
+        sibling.scope,
+        nested.scope,
+        later.scope,
       ],
-    );
-    // Counts match git's, as the turn summary does.
-    const pipe = result.files?.find((file) => file.new_path === "pipe.ts");
-    assert.deepEqual([pipe?.additions, pipe?.deletions], [5, 2]);
-    assert.deepEqual(result.files?.find((file) => file.status === "added")?.hunks?.[0]?.rows, [
-      { kind: "added", new: { line: 1, text: "héllo" } },
-    ]);
-    const lib = result.files?.find((file) => file.new_path === "lib.rs");
-    assert.strictEqual(lib?.fallback, undefined);
-    assert.strictEqual(lib?.hunks?.[0]?.header, "total");
-    assert.deepEqual(result.omitted, [
+      checkpoints: [
+        ...projection.checkpoints,
+        ...sibling.checkpoints,
+        ...nested.checkpoints,
+        ...later.checkpoints,
+      ],
+    }),
+    diffCheckpoints,
+  });
+  return Effect.gen(function* () {
+    const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+    const result = yield* query.getTurnDiff({ threadId, fromTurnCount: 0, toTurnCount: 2 });
+    assert.deepEqual(result.repositories, [
       {
-        status: "modified",
-        old_path: "big.txt",
-        new_path: "big.txt",
-        additions: 1,
-        deletions: 1,
-        reason: "too_large",
+        name: "shared",
+        repositoryPath: "/work/shared",
+        relativePath: "../shared",
+        diff: "patch of /work/shared",
       },
     ]);
-
-    const onlyLib = yield* query.getTurnSemanticDiff({ ...range, paths: ["lib.rs"], syntax: true });
+    // The thread's own patch leaves the folder of the repository inside it alone.
+    assert.strictEqual(result.diff, "patch of /work/app");
     assert.deepEqual(
-      onlyLib.files?.map((file) => file.new_path),
-      ["lib.rs"],
+      diffCheckpoints.mock.calls.find(([input]) => input.cwd === "/work/app")?.[0].excludePaths,
+      ["packages/ui"],
     );
-    const libRows = onlyLib.files?.[0]?.hunks?.flatMap((hunk) => hunk.rows) ?? [];
-    assert.isTrue(libRows.some((row) => (row.kind === "context" ? row.syntax : undefined)?.length));
+  }).pipe(Effect.provide(layer));
+});
 
-    const rename = result.files?.find((file) => file.status === "renamed");
-    const gap = rename?.gap_after ?? rename?.hunks?.[0]?.gap_before;
-    assert.isDefined(gap);
-    const expanded = yield* query.expandTurnDiffGap({
-      ...range,
-      status: "renamed",
-      old_path: "old-name.txt",
-      new_path: "new-name.txt",
-      gap: gap!,
-    });
-    assert.strictEqual(expanded.rows.length, gap!.len);
-    assert.deepEqual(expanded.rows[0], {
-      kind: "context",
-      old_line: gap!.old_start,
-      new_line: gap!.new_start,
-      text: `line ${gap!.old_start - 1} ✓`,
-    });
-  }).pipe(Effect.provide(layerTest), Effect.scoped),
-);
+it.effect("answers a turn in a folder that is not a repository with an empty patch", () => {
+  const projection = makeProjection();
+  const layer = layerFor({
+    projection: Effect.succeed({
+      ...projection,
+      checkpoints: projection.checkpoints.map((checkpoint) => ({
+        ...checkpoint,
+        status: "missing" as const,
+      })),
+    }),
+  });
+  return Effect.gen(function* () {
+    const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+    const result = yield* query.getFullThreadDiff({ threadId, toTurnCount: 2 });
+    assert.strictEqual(result.diff, "");
+    assert.isUndefined(result.repositories);
+  }).pipe(Effect.provide(layer));
+});

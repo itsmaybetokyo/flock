@@ -3,7 +3,7 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { useNavigate } from "@tanstack/react-router";
 import { T, useGT, useMessages, Var } from "gt-react";
-import { getActiveLocale, type MessageResolver } from "~/i18n/messages";
+import type { MessageResolver } from "~/i18n/messages";
 import { CalendarClockIcon, PencilIcon, PlayIcon, Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import {
@@ -12,15 +12,17 @@ import {
   type ScheduledTask,
   type ThreadId,
 } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
+import { useClientSettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
-import { scheduleLabel } from "@t3tools/client-runtime/scheduled-tasks";
 import { ScheduledRelativeLabel } from "../settings/ScheduledTasksSettings";
+import { scheduleLabel } from "../settings/scheduledTasksSettings.logic";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -43,12 +45,13 @@ const STATUS_DOT_CLASS: Record<ScheduledTask["lastRunStatus"], string> = {
 
 function taskScheduleLine(
   task: ScheduledTask,
+  timestampFormat: TimestampFormat,
   timeZone: string | undefined,
   resolve: MessageResolver,
 ) {
   return (
     <>
-      {scheduleLabel(task.schedule, timeZone, task.nextRunAt, resolve, getActiveLocale())}
+      {scheduleLabel(task.schedule, timestampFormat, timeZone, task.nextRunAt, resolve)}
       {task.blockedByPolicy !== undefined ? (
         ` · ${task.blockedByPolicy}`
       ) : task.enabled && task.nextRunAt !== null ? (
@@ -87,6 +90,7 @@ export function ThreadAutomationsPanel(props: {
   const runTaskNow = useAtomCommand(serverEnvironment.runScheduledTaskNow, {
     label: "thread automation run now",
   });
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const navigate = useNavigate();
   const gt = useGT();
   const m = useMessages();
@@ -198,13 +202,13 @@ export function ThreadAutomationsPanel(props: {
                   {task.title}
                 </span>
                 <p className="truncate text-2xs text-muted-foreground">
-                  {taskScheduleLine(task, tasksQuery.data?.timeZone, m)}
+                  {taskScheduleLine(task, timestampFormat, tasksQuery.data?.timeZone, m)}
                 </p>
               </TooltipTrigger>
               <TooltipPopup side="left">
                 <p className="font-medium">{task.title}</p>
                 <p className="text-muted-foreground">
-                  {taskScheduleLine(task, tasksQuery.data?.timeZone, m)}
+                  {taskScheduleLine(task, timestampFormat, tasksQuery.data?.timeZone, m)}
                 </p>
               </TooltipPopup>
             </Tooltip>

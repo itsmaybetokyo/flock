@@ -5,6 +5,7 @@ import {
   type ProjectId,
   ScheduledTaskId,
   type ScheduledTask,
+  type ScheduledTaskSchedule,
   type ScheduledTaskThreadMode,
   type ScheduledTaskUpsertSchedule,
   scheduledTaskThreadMode,
@@ -22,16 +23,68 @@ import {
   webhookFilterDraftsChanged,
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
+import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { msg } from "gt-react";
 
 import {
   resolveProjectSettings,
   type LegacyProjectSettingsFields,
 } from "@t3tools/shared/projectSettings";
-import { m, type MessageResolver } from "../../i18n/messages";
+import { getActiveLocale, m, type MessageResolver } from "../../i18n/messages";
 import type { ProviderInstanceEntry } from "../../providerInstances";
+import { formatDateTimeTimestamp, formatTimeOfDay } from "../../timestampFormat";
 
 import type { ResolvedSettingsScope } from "./settingsScope";
+
+/** Abbreviated weekday name, 0 = Sunday. */
+export function weekdayShortLabel(day: number, locale: string = getActiveLocale()): string {
+  // 2024-01-07 was a Sunday.
+  return new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(
+    new Date(Date.UTC(2024, 0, 7 + day)),
+  );
+}
+
+export function scheduleLabel(
+  schedule: ScheduledTaskSchedule,
+  timestampFormat: TimestampFormat,
+  timeZone?: string,
+  runAt?: string | null,
+  resolve: MessageResolver = m,
+  locale: string = getActiveLocale(),
+): string {
+  if (schedule.type === "webhook") return resolve(msg("On webhook"));
+  if (schedule.type === "once") {
+    return resolve(
+      msg("Once, {time}", { time: formatDateTimeTimestamp(schedule.runAt, timestampFormat) }),
+    );
+  }
+  if (schedule.type === "interval") {
+    const minutes = schedule.everyMs / 60_000;
+    return Number.isInteger(minutes)
+      ? resolve(msg("Every {minutes} min", { minutes }))
+      : resolve(msg("Every {seconds} sec", { seconds: Math.round(schedule.everyMs / 1000) }));
+  }
+  const weekdays = schedule.weekdays ?? [];
+  const time = formatTimeOfDay(schedule.timeOfDay, timestampFormat);
+  const zone = scheduleTimeZoneLabel(timeZone, runAt);
+  if (weekdays.length === 0) {
+    return zone === undefined
+      ? resolve(msg("Daily at {time}", { time }))
+      : resolve(msg("Daily at {time} {zone}", { time, zone }));
+  }
+  if (weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)) {
+    return zone === undefined
+      ? resolve(msg("Weekdays at {time}", { time }))
+      : resolve(msg("Weekdays at {time} {zone}", { time, zone }));
+  }
+  const days = weekdays
+    .map((day) => (day >= 0 && day <= 6 ? weekdayShortLabel(day, locale) : ""))
+    .join(", ");
+  return zone === undefined
+    ? resolve(msg("{days} at {time}", { days, time }))
+    : resolve(msg("{days} at {time} {zone}", { days, time, zone }));
+}
 
 export function matchesScheduledTaskScope(
   scope: ResolvedSettingsScope,
@@ -86,7 +139,6 @@ export interface DraftState {
   readonly modelKey: string;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
-  readonly autoSettle: boolean;
   /** Retain the source selection's provider options when the picker leaves instanceId:model unchanged. */
   readonly baseModelSelection: ModelSelection | null;
   readonly signatureEnabled: boolean;
@@ -295,7 +347,6 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     modelKey: `${task.modelSelection.instanceId}:${task.modelSelection.model}`,
     runtimeMode: task.runtimeMode,
     interactionMode: task.interactionMode,
-    autoSettle: task.autoSettle === true,
     baseModelSelection: task.modelSelection,
     ...(schedule.type === "webhook" && schedule.signature !== null
       ? {
